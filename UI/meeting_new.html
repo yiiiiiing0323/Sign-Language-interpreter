@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>In Meeting</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="meet-page">
+
+<header class="meet-top-bar">
+    <div class="meeting-info">12:30 ｜ abc-defg-hij</div>
+    
+    <div class="center-controls">
+        <button class="ctrl mic">🎤</button>
+        <button class="ctrl cam">📹</button>
+        <button class="ctrl end">📞</button>
+    </div>
+    
+    <div class="top-right-controls">
+        <button class="ctrl info">ℹ️</button>
+        <button class="ctrl members">👥</button>
+        <button class="ctrl chat-toggle">💬</button>
+        <button class="ctrl settings">⚙️</button>
+    </div>
+</header>
+
+<div class="meet-stage">
+    <div class="video-left">
+        <div class="video-tile main"><span>對方視訊</span></div>
+    </div>
+
+    <div class="video-right">
+        <div class="video-tile ai"><span>對方 AI 畫面</span></div>
+    </div>
+
+    <div class="subtitle-container"></div>
+
+    <aside class="meet-side hidden">
+        <div class="side-header">聊天室</div>
+        <div class="chat-area"></div>
+    </aside>
+</div>
+
+<footer class="bottom-panel">
+    <div class="bottom-input">
+        <input type="text" placeholder="輸入訊息...">
+        <button class="voice-btn">🎤</button>
+    </div>
+
+    <div class="my-video-container">
+        <video id="selfVideo" autoplay muted playsinline></video>
+        <button class="self-video-arrow hidden">⬅️</button>
+    </div>
+</footer>
+
+<div class="modal-overlay" id="endCallModal">
+    <div class="modal-content">
+        <h2>確定要離開會議嗎？</h2>
+        <p>離開後將中斷目前的會議連線。</p>
+        <div class="modal-buttons">
+            <button id="cancelEnd">取消</button>
+            <button id="confirmEnd">確認離開</button>
+        </div>
+    </div>
+</div>
+
+<aside class="info-panel hidden" id="infoPanel">
+    <h3>會議資訊</h3>
+    <p><strong>會議代碼：</strong> abc-defg-hij</p>
+    <p><strong>開始時間：</strong> 12:30</p>
+    <p><strong>語言：</strong> 中文 ↔ 英文</p>
+</aside>
+
+<aside class="members-panel hidden" id="membersPanel">
+    <h3>會議成員</h3>
+    <ul>
+        <li>你（主持人）</li>
+        <li>對方使用者</li>
+        <li>AI Assistant</li>
+    </ul>
+</aside>
+
+<div class="modal-overlay" id="settingsModal">
+    <div class="modal-content">
+        <h2>會議設定</h2>
+        <div class="form-group">
+            <label>字幕語言</label>
+            <select>
+                <option>自動</option>
+                <option>中文</option>
+                <option>英文</option>
+            </select>
+        </div>
+        <div class="modal-buttons">
+            <button id="closeSettings">關閉</button>
+        </div>
+    </div>
+</div>
+
+<script src="meeting_new.js"></script>
+</body>
+</html>
