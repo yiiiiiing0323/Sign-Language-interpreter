@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <link rel="stylesheet" href="operation.css">
+    <link rel="stylesheet" href="home.css">
+    <link rel="stylesheet" href="base.css">
+    <link rel="stylesheet" href="components.css">
+</head>
+<body>
+    <header class="top-navbar">
+        <!-- 左側導航連結 -->
+            <nav class="nav-links">
+                <a href="home.html" class="nav-item">系統介紹</a>
+                <span class="divider">|</span>
+                <a href="operation.html" class="nav-item active">操作說明</a>
+                <span class="divider">|</span>
+                <a href="record.html" class="nav-item">紀錄</a>
+                <span class="divider">|</span>
+                <a href="translate.html" class="nav-item">AI</a>
+            </nav>
+
+        <!-- 右側個人資料與下拉選單 -->
+        <div class="user-menu-container">
+            <div class="user-avatar" id="userIcon">👤</div>
+            <div class="dropdown-menu" id="userDropdown">
+                <a href="settings.html">設定</a>
+                <a href="index.html" class="logout-link">登出</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="content-container">
+        <h1>操作說明</h1>
+    </main>
+
+    <!-- 登出確認彈窗 -->
+    <div class="modal-overlay" id="logout-modal">
+        <div class="modal-content">
+            <h2>確定要登出嗎？</h2>
+            <p>登出後，您需要重新輸入帳號密碼才能進入。</p>
+            
+            <div class="modal-buttons">
+                <!-- 確認按鈕 -->
+                <button class="btn-primary" id="confirm-logout">確認登出</button>
+                <!-- 取消按鈕 -->
+                <button class="btn-cancel" id="cancel-logout">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="operation.js"></script>
+</body>
+</html>
