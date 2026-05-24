@@ -1,0 +1,96 @@
+:root {
+    --border-color: #00ffff;
+    --side-width: 60px;
+}
+
+body {
+    margin: 0;
+    display: flex;
+    background-color: #f5f5f5;
+}
+
+/* 1. 固定書籤列 */
+.bookmark-bar {
+    width: var(--side-width);
+    height: 100vh;
+    background: #333;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 20px;
+    gap: 20px;
+    position: fixed;
+    left: 0;
+    top: 0;
+}
+
+.bookmark-item {
+    font-size: 24px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.bookmark-item:hover { transform: scale(1.2); }
+
+/* 主容器 */
+.meeting-container {
+    margin-left: var(--side-width);
+    display: flex;
+    width: calc(100% - var(--side-width));
+    height: 100vh;
+    padding: 15px;
+    gap: 15px;
+    box-sizing: border-box;
+}
+
+.tile {
+    flex: 1; /* 平分空間 */
+    background: white;
+    border: 3px solid var(--border-color);
+    border-radius: 12px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease; /* 放大縮小時的平滑過場 */
+}
+
+/* 3. 聊天室收合樣式 */
+#chatPanel.collapsed {
+    display: none; /* 完全移除佔位，讓其他區塊 flex: 1 自動放大 */
+}
+
+.expand-btn {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--border-color);
+    border: none;
+    padding: 10px;
+    cursor: pointer;
+    border-radius: 8px 0 0 8px;
+}
+
+/* 視訊與控制項 */
+.video-wrapper { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+.avatar-placeholder { width: 100px; height: 100px; border-radius: 50%; border: 2px solid #000; display: flex; align-items: center; justify-content: center; background: #fff; }
+#selfVideo { position: absolute; width: 100%; height: 100%; object-fit: cover; border-radius: 9px; }
+
+.local-controls { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; }
+.ctrl { width: 45px; height: 45px; border-radius: 50%; border: 1px solid #ccc; background: white; cursor: pointer; }
+
+/* 錄音狀態燈 */
+.status-dot {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    width: 12px;
+    height: 12px;
+    background: red;
+    border-radius: 50%;
+    display: none;
+    animation: blink 1s infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+.status-dot.active { display: block; }
+
+.hidden { display: none; }

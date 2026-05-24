@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Workspace</title>
+    <link rel="stylesheet" href="translate2.css">
+</head>
+<body class="meet-page">
+
+    <header class="top-nav">
+    <div class="nav-left">
+        <!-- <div class="bookmark-item">📑</div>
+        <div class="bookmark-item">☁️</div>
+        <div class="bookmark-item">📝</div> -->
+        <button class="nav-btn" id="openSettings">⚙️ 設定</button>
+    </div>
+    <div class="nav-right">
+        <span id="currentTime">00:00:00</span>
+        <button class="nav-btn exit" id="exitBtn">🚪 退出</button>
+    </div>
+</header>
+
+    <main class="meeting-container">
+        <section class="tile section-me">
+            <div class="video-container">
+                <video id="selfVideo" autoplay muted playsinline class="video-content"></video>
+                <div id="selfPlaceholder" class="avatar-placeholder">我</div>
+            </div>
+            <div class="local-controls">
+                <button class="ctrl" id="recordBtn">🎤</button>
+                <button class="ctrl" id="camBtn">📹</button>
+            </div>
+            <div id="recordStatus" class="status-dot"></div>
+        </section>
+
+        <section class="tile section-ai">
+            <div class="video-container">
+                <div class="avatar-placeholder">AI</div>
+            </div>
+        </section>
+
+        <section class="tile section-chat" id="chatPanel">
+            <div class="chat-header">
+                <span>翻譯與訊息</span>
+                <button id="toggleChat">◀ 收起</button>
+            </div>
+            
+            <div class="chat-area" id="chatArea"></div>
+
+            <div class="chat-input-wrapper">
+                <textarea id="chatInput" placeholder="輸入訊息... (Enter 發送, Alt+Enter 換行)" rows="1"></textarea>
+                <button id="sendBtn" class="send-btn">發送</button>
+            </div>
+        </section>
+    </main>
+
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>系統設定</h3>
+            <label>
+                <input type="checkbox" id="enterSendConfig" checked> 
+                使用 Enter 鍵發送訊息 (Alt+Enter 換行)
+            </label>
+            <br><br>
+            <button id="closeSettings">儲存並關閉</button>
+        </div>
+    </div>
+
+    <script src="translate2.js"></script>
+</body>
+</html>

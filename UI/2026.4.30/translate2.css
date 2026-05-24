@@ -1,0 +1,48 @@
+/* 文字輸入框優化 */
+.chat-input-wrapper {
+    display: flex;
+    align-items: flex-end; /* 讓按鈕對齊底部 */
+    padding: 10px;
+    border-top: 1px solid #ddd;
+    background: #fff;
+}
+
+#chatInput {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    resize: none; /* 禁用手動調整大小 */
+    font-family: inherit;
+    max-height: 100px; /* 避免無限變高 */
+    overflow-y: auto;
+}
+
+.send-btn {
+    margin-left: 8px;
+    padding: 8px 15px;
+    height: 34px;
+    background: var(--border-color);
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+/* 視訊與頭像切換 */
+.video-content.hidden {
+    display: none;
+}
+.avatar-placeholder {
+    display: flex; /* 預設顯示 */
+}
+.avatar-placeholder.hidden {
+    display: none;
+}
+
+/* 彈窗樣式 */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 2000;
+}
+.modal-overlay.active { display: flex; }
+.modal-content { background: white; padding: 30px; border-radius: 8px; min-width: 300px; }

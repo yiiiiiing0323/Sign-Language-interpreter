@@ -1,0 +1,143 @@
+/* 延續之前的樣式... */
+:root {
+    --border-color: #00ffff;
+    --nav-height: 50px;
+}
+
+body {
+    margin: 0;
+    display: flex;
+    flex-direction: column; /* 讓內容垂直排列：頂部導覽 + 主畫面 */
+    height: 100vh;
+    background-color: #f0f0f0;
+    overflow: hidden;
+}
+
+/* 1. 頂部導覽列 */
+.top-nav {
+    height: var(--nav-height);
+    background: #333;
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+    z-index: 1000;
+}
+
+.nav-left, .nav-right { display: flex; align-items: center; gap: 15px; }
+.nav-btn { background: #444; border: none; color: white; padding: 5px 12px; cursor: pointer; border-radius: 4px; }
+.nav-btn.exit { background: #d9534f; }
+#currentTime { font-family: monospace; font-size: 1.1em; color: var(--border-color); }
+
+/* 主容器 */
+.meeting-container {
+    flex: 1; /* 佔滿剩餘高度 */
+    display: flex;
+    padding: 15px;
+    gap: 15px;
+    box-sizing: border-box;
+}
+
+.tile {
+    flex: 1;
+    background: white;
+    border: 3px solid var(--border-color);
+    border-radius: 12px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+/* 3. 視訊畫面填滿 Block */
+.video-container {
+    position: relative;
+    flex: 1;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.video-content {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* 關鍵：裁切並填滿整個區塊 */
+    z-index: 1;
+}
+
+.avatar-placeholder {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: white;
+    color: black;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 0; /* 在視訊下方 */
+}
+
+/* 2. 底部輸入框佈局 */
+.chat-input-wrapper {
+    display: flex;
+    align-items: flex-end; /* 讓按鈕對齊 textarea 底部 */
+    padding: 12px;
+    border-top: 1px solid #eee;
+    background: #fff;
+}
+
+#chatInput {
+    flex: 1;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px;
+    resize: none; /* 禁止手動調整大小 */
+    font-family: inherit;
+    line-height: 1.4;
+    max-height: 150px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.send-btn { margin-left: 8px; cursor: pointer; }
+
+/* 其他控制與收合樣式... */
+.status-dot { position: absolute; top: 15px; left: 15px; width: 12px; height: 12px; background: red; border-radius: 50%; display: none; z-index: 10; }
+.status-dot.active { display: block; animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.local-controls { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 10; }
+.hidden { display: none; }
+#chatPanel.collapsed { display: none; }
+
+
+
+#chatInput:focus {
+    border-color: var(--border-color);
+}
+
+.send-btn {
+    background: var(--border-color);
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin-left: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    font-weight: bold;
+}
+
+/* 視訊/頭像隱藏邏輯 */
+.video-content.off {
+    display: none;
+}
+.avatar-placeholder.hidden {
+    display: none;
+}
