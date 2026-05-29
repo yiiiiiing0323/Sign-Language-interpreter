@@ -8,6 +8,16 @@ import pandas as pd
 from PIL import Image, ImageDraw, ImageFont 
 import threading  
 import requests   
+import os
+from dotenv import load_dotenv
+
+# ========================================
+# ⭐ 新增：PyTorch 與融合模組
+# ========================================
+import torch
+import torch.nn as nn
+import json
+from collections import deque
 
 print("[追蹤雷達] 2. 成功載入基礎套件...")
 import mediapipe as mp
@@ -18,9 +28,25 @@ try:
     from b_stream import BStreamGestureMatcher
     print("[追蹤雷達] 4. 成功找到 a_stream 與 b_stream 模組...")
 except ImportError:
-    print("⚠️ 找不到 b_stream_matcher.py，程式可能無法完整運作。")
+    print("⚠️ 找不到 b_stream.py，程式可能無法完整運作。")
 
-# 中文字體繪製器
+# ⭐ 新增：匯入融合模組
+from fusion import DecisionFusion
+
+# ========================================
+# ⭐ 新增：LSTM 模型定義
+# ========================================
+class SignRNN(nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_layers, num_classes):
+        super().__init__()
+        self.rnn = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, num_classes)
+    
+    def forward(self, x):
+        out, _ = self.rnn(x)
+        return self.fc(out[:, -1, :])
+
+# 中文字體繪製器（保持不變）
 def put_chinese_text(img, text, position, text_color=(0, 255, 0), font_size=40):
     try:
         img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -37,7 +63,7 @@ def put_chinese_text(img, text, position, text_color=(0, 255, 0), font_size=40):
         return img
 
 # ==========================================
-# 🌟 LLM 翻譯模組 (2.5 專屬跳島機制)
+# 🌟 LLM 翻譯模組（保持你原有的 Gemini 版本）
 # ==========================================
 class TranslationWorker:
     def __init__(self, api_key, use_real_api=False):
@@ -48,15 +74,13 @@ class TranslationWorker:
         self.is_translating = False
         self.last_word_time = time.time()
         self.last_added_word = ""  
-        self.last_hands_seen_time = time.time() # 🌟 新增：記錄最後一次看到手的時間
+        self.last_hands_seen_time = time.time()
 
-        # ⏱️ 時間設定區
         self.debounce_time = 2.0     
-        self.translate_delay = 2.0   # 🌟 修改：畫面沒手超過 2 秒就翻譯 (原為 2.5 秒)
+        self.translate_delay = 2.0
         self.display_duration = 5.0  
         self.translation_done_time = 0 
 
-        # 💡 提示詞工程
         self.system_instruction = """
         你是一個專業的台灣手語(TSL)翻譯員。
         使用者會輸入一連串的手語單字（Glosses），請你根據台灣手語的文法習慣，
@@ -79,6 +103,12 @@ class TranslationWorker:
            - 輸入：["爸爸", "弟弟"] -> 輸出：叔叔。
            - 輸入：["爸爸", "弟弟", "太太"] -> 輸出：嬸嬸。
            - 輸入：["結婚", "女生"] -> 輸出：太太。
+        
+        # ⭐ 新增：混淆詞判斷規則
+        6. 當遇到用方括號標記的混淆詞（如：[先生/謝謝]），請根據上下文選擇：
+           - 輸入：["你好", "[先生/謝謝]"] -> 輸出：你好，先生。
+           - 輸入：["幫忙", "我", "[先生/謝謝]"] -> 輸出：謝謝你幫我。
+           - 輸入：["[捷運/火車]", "搭", "我", "學校", "去"] -> 輸出：我搭捷運去學校。
 
         請直接輸出翻譯後的句子，絕對不要輸出任何解釋、引言或標點符號之外的廢話。
         """
@@ -96,18 +126,16 @@ class TranslationWorker:
         self.is_translating = True
         try:
             if not self.use_real_api:
-                # 🛠️ 開發測試模式：假裝運算 1 秒，不扣 API 額度也不用連網
                 time.sleep(1) 
                 self.final_sentence = f"[測試翻譯] {' '.join(words_to_translate)}"
             else:
                 print(f"[LLM] 發送雲端請求: {words_to_translate}...")
                 clean_api_key = self.api_key.strip()
                 
-                # 🚀 終極解決方案：鎖定您帳號確定可用的 2.5 系列與最新模型
                 fallback_models = [
-                    "gemini-2.5-flash",         # 驗證可用的最新標準版
-                    "gemini-2.5-flash-lite",    # 輕量版 (若有)
-                    "gemini-flash-latest"       # 萬用備援別名
+                    "gemini-2.5-flash",
+                    "gemini-2.5-flash-lite",
+                    "gemini-flash-latest"
                 ]
                 
                 headers = {'Content-Type': 'application/json'}
@@ -131,7 +159,6 @@ class TranslationWorker:
                     try:
                         response = requests.post(url, headers=headers, json=payload, timeout=8)
                         
-                        # 攔截被拒絕的連線
                         if response.status_code in [404, 429, 503]:
                             if response.status_code == 404:
                                 print(f"⚠️ [{current_model}] 模型不存在 (404)，切換...")
@@ -148,7 +175,6 @@ class TranslationWorker:
                             self.final_sentence = f"API 錯誤: {response.status_code}"
                             return
                         
-                        # 成功拿到資料！
                         data = response.json()
                         self.final_sentence = data['candidates'][0]['content']['parts'][0]['text'].strip()
                         print(f"[LLM] 翻譯成功 🎉 (使用的模型: {current_model}): {self.final_sentence}")
@@ -174,20 +200,15 @@ class TranslationWorker:
             self.translation_done_time = time.time() 
 
     def check_and_translate(self, hands_present=False):
-        # 🌟 檢查翻譯結果是否顯示夠久了，超過 display_duration 就自動清空
         if self.final_sentence and not self.is_translating:
             if time.time() - self.translation_done_time > self.display_duration:
-                self.final_sentence = "" # 清空句子後，UI 就會自動變回「收集單字」狀態
+                self.final_sentence = ""
 
-        # 🌟 記錄手部最後出現的時間
         if hands_present:
             self.last_hands_seen_time = time.time()
 
-        # 🌟 觸發翻譯邏輯大升級！
         if len(self.word_buffer) > 0 and not self.is_translating:
-            # 條件 1: 畫面中「沒有手」且持續超過 2 秒 (您提議的完美解法)
             no_hands_trigger = (not hands_present) and (time.time() - self.last_hands_seen_time > self.translate_delay)
-            # 條件 2: 雖然有手，但已經超過 5 秒沒有打出新單字 (防呆機制，避免手卡在畫面中系統死等)
             timeout_trigger = (time.time() - self.last_word_time > 5.0)
 
             if no_hands_trigger or timeout_trigger: 
@@ -195,11 +216,54 @@ class TranslationWorker:
                 self.word_buffer.clear()
                 threading.Thread(target=self._call_llm, args=(words_to_translate,), daemon=True).start()
 
+# ==========================================
+# ⭐ 主程式
+# ==========================================
 def main():
     print("[追蹤雷達] 5. 進入 main() 主程式區塊...")
+
+    load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY")
     
+    # ========================================
+    # ⭐ 修正區：初始化模型常數與緩衝區
+    # ========================================
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    TOTAL_DIM = 218
+    SEQ_LEN = 30
+    sequence_buffer = deque(maxlen=SEQ_LEN)
+    lstm_enabled = False
+    ai_model = None
+    
+    try:
+        with open("label_map.json", "r", encoding="utf-8") as f:
+            idx2label = {int(k): v for k, v in json.load(f).items()}
+    
+        # 讀取 pth 權重檔
+        checkpoint = torch.load("sign_lstm.pth", map_location=device)
+    
+        # ⭐ 核心修正：從權重檔(fc.bias)反推當初訓練時的真實類別數量 (例如 41)
+        num_classes_in_model = checkpoint['fc.bias'].shape[0]
+    
+        # 建立神經網路時，使用 num_classes_in_model，而非 len(idx2label)
+        ai_model = SignRNN(TOTAL_DIM, 128, 2, num_classes_in_model).to(device)
+        ai_model.load_state_dict(checkpoint)
+        ai_model.eval()
+
+        print(f"[追蹤雷達] 5. 成功載入 LSTM 預測模型！(偵測到 {num_classes_in_model} 個類別)")
+        lstm_enabled = True
+    except Exception as e:
+        print(f"⚠️ 無法載入 AI 模型或 label_map，將僅使用邏輯規則運作。錯誤: {e}")
+        lstm_enabled = False
+    
+# ========================================
+# 初始化模組
+# ========================================
     a_stream_extractor = AStreamFeatureExtractor()
     b_stream_matcher = BStreamGestureMatcher(excel_path="database.xlsx")
+    
+    # 決策融合器
+    decision_fusion = DecisionFusion()
 
     try:
         df = pd.read_excel("database.xlsx")
@@ -218,19 +282,21 @@ def main():
     print("[追蹤雷達] 6. 準備初始化 MediaPipe 視覺引擎...")
     mp_pose = mp.solutions.pose
     mp_hands = mp.solutions.hands
+    mp_face_mesh = mp.solutions.face_mesh
     mp_drawing = mp.solutions.drawing_utils
     
     pose = mp_pose.Pose(min_detection_confidence=0.7, min_tracking_confidence=0.7)
     hands = mp_hands.Hands(max_num_hands=2, 
                            min_detection_confidence=0.5,   
-                           min_tracking_confidence=0.5)     
-    # 🌟 啟動 LLM 翻譯大腦 (已設定真實 API Key 且開啟連線)
-    translator = TranslationWorker(api_key="AIzaSyALflEImMyOR-ZZvzlIDS_q5Wd1NtEUt8A", use_real_api=True)
+                           min_tracking_confidence=0.5)
+    face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)
+    
+    translator = TranslationWorker(api_key=api_key, use_real_api=False)
 
-    # 🌟 啟動時驗證 API Key 與可用模型（背景執行，不阻塞主程式）
+    # API 驗證
     def _verify_api():
         import requests as _req
-        key = "AIzaSyALflEImMyOR-ZZvzlIDS_q5Wd1NtEUt8A".strip()
+        key = os.getenv("GEMINI_API_KEY", "").strip()
         test_models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"]
         print("\n🔍 [LLM 驗證] 正在確認可用模型...")
         for m in test_models:
@@ -260,6 +326,10 @@ def main():
     print("🟢 系統完全啟動成功！請對準鏡頭並比劃手勢... (按 'q' 退出)")
 
     frame_count = 0
+    last_word = None
+    last_word_time = 0
+    WORD_COOLDOWN = 1.5
+    
     while True: 
         try:
             ret, frame = cap.read()
@@ -270,19 +340,34 @@ def main():
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             rgb_frame = np.ascontiguousarray(rgb_frame)
             
+            img_h, img_w = frame.shape[:2]
+            
+            # ========================================
+            # MediaPipe 偵測
+            # ========================================
             pose_results = pose.process(rgb_frame)
             hand_results = hands.process(rgb_frame)
+            face_results = face_mesh.process(rgb_frame)
 
             # 畫骨架
-            hands_present = False # 🌟 新增：預設畫面中沒有手
+            hands_present = False
             if pose_results.pose_landmarks:
                 mp_drawing.draw_landmarks(frame, pose_results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             if hand_results.multi_hand_landmarks:
-                hands_present = True # 🌟 新增：偵測到手了！
+                hands_present = True
                 for hand_landmarks in hand_results.multi_hand_landmarks:
                     mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-            current_features = a_stream_extractor.extract_features(pose_results, hand_results)
+            # ========================================
+            # ⭐ A流：提取特徵
+            # ========================================
+            current_features, ai_tensor = a_stream_extractor.extract_features(
+                pose_results, 
+                hand_results, 
+                face_results, 
+                img_w, 
+                img_h
+            )
 
             if frame_count % 30 == 0: 
                 active_features = {k: v for k, v in current_features.items() if (isinstance(v, bool)) or (isinstance(v, float) and v < 90)}
@@ -292,16 +377,87 @@ def main():
                         print(f"  '{key}': {value:.3f}")
                     else:
                         print(f"  '{key}': {value}")
-                print("-" * 40) 
+                print("-" * 40)
 
+            # ========================================
+            # ⭐ A流：LSTM 預測
+            # ========================================
+            ai_result = None
+            if lstm_enabled and hand_results and hand_results.multi_hand_landmarks:
+                sequence_buffer.append(ai_tensor)
+                
+                if len(sequence_buffer) == SEQ_LEN:
+                    x_in = torch.tensor([list(sequence_buffer)], dtype=torch.float32).to(device)
+                    
+                    with torch.no_grad():
+                        outputs = ai_model(x_in) # ⭐ 修正：從 model 改為 ai_model
+                        probs = torch.softmax(outputs, dim=1)[0]
+                        
+                        TOP_K = 5
+                        top_k_probs, top_k_indices = torch.topk(probs, TOP_K)
+                        
+                        ai_top_k_results = [
+                            (idx2label[idx.item()], prob.item())
+                            for idx, prob in zip(top_k_indices, top_k_probs)
+                        ]
+                        
+                        if top_k_probs[0].item() > 0.65:
+                            ai_result = (idx2label[top_k_indices[0].item()], top_k_probs[0].item())
+                        
+                        # 檢查混淆詞
+                        confusable_candidates = []
+                        for word, conf in ai_top_k_results:
+                            if conf >= top_k_probs[0].item() * 0.85:
+                                if decision_fusion.get_confusable_words(word):
+                                    confusable_candidates.append((word, conf))
+                        
+                        if len(confusable_candidates) >= 2:
+                            words = [w for w, c in confusable_candidates]
+                            first_word = words[0]
+                            group = decision_fusion.get_confusable_words(first_word)
+                            
+                            same_group_words = [w for w in words if w in group]
+                            
+                            if len(same_group_words) >= 2:
+                                merged_word = decision_fusion.merge_confusable_words(same_group_words)
+                                max_conf = max(c for w, c in confusable_candidates if w in same_group_words)
+                                ai_result = (merged_word, max_conf)
+                                print(f"🔀 偵測到混淆詞: {same_group_words} → {merged_word}")
+            
+            elif not hands_present and lstm_enabled:
+                sequence_buffer.clear()
+
+            # ========================================
+            # ⭐ B流：邏輯判斷
+            # ========================================
             gesture_name = b_stream_matcher.evaluate_frame(current_features)
             
+            logic_result = None
             if gesture_name:
-                translator.add_word(gesture_name)
+                logic_result = (gesture_name, 0.9)
 
-            # 🌟 修改：將「畫面中有沒有手」的情報傳給翻譯機
+            # ========================================
+            # ⭐ 決策融合
+            # ========================================
+            final_word, source = decision_fusion.fuse(ai_result, logic_result)
+            
+            # ========================================
+            # ⭐ 詞彙緩衝區管理
+            # ========================================
+            current_time = time.time()
+            
+            if final_word:
+                if final_word != last_word or (current_time - last_word_time) > WORD_COOLDOWN:
+                    translator.add_word(final_word)
+                    last_word = final_word
+                    last_word_time = current_time
+                    print(f"✅ 新增詞彙: {final_word} (來源: {source})")
+
             translator.check_and_translate(hands_present=hands_present)
             
+            # ========================================
+            # 畫面顯示
+            # ========================================
             hand_status = "Unknown"
             if current_features.get('is_open_HAND'): hand_status = "OPEN (Flat)"
             elif current_features.get('is_index_pointing_HAND'): hand_status = "POINTING"
@@ -309,12 +465,20 @@ def main():
             elif current_features.get('is_fist_HAND'): hand_status = "FIST"
 
             cv2.putText(frame, f"State: {hand_status}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            cv2.putText(frame, f"Z-Align: {current_features.get('vector_align_HAND_8_CAMERA_AXIS', 0):.2f}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            cv2.putText(frame, f"NOSE dist: {current_features.get('dist_HAND_8_FACE_1', 0):.2f}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             
-            if current_features.get('move_apart_horizontally_RIGHT_HAND_LEFT_HAND'):
-                cv2.putText(frame, "HANDS MOVING APART!", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 100, 100), 2)
-
+            # 顯示融合來源
+            if source:
+                color_map = {
+                    "BOTH": (0, 255, 0),
+                    "SYNONYM": (100, 200, 255),
+                    "CONFUSABLE": (255, 100, 100),
+                    "UNCERTAIN": (255, 200, 0),
+                    "LOGIC": (200, 200, 200),
+                    "AI": (200, 200, 200)
+                }
+                source_color = color_map.get(source, (150, 150, 150))
+                cv2.putText(frame, f"Source: {source}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, source_color, 2)
+            
             cv2.rectangle(frame, (0, 400), (640, 480), (0, 0, 0), -1)
             
             if translator.is_translating:
@@ -338,6 +502,7 @@ def main():
             error_details = traceback.format_exc()
             with open("error_log.txt", "w", encoding="utf-8") as f: f.write(error_details)
             print("🚨 發生錯誤！請查看 error_log.txt")
+            print(error_details)
             time.sleep(5)
             break
 
