@@ -42,23 +42,28 @@ graph TD
     classDef stream fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px;
 
     %% 1. 手語輸入與辨識端
-    subgraph TSL_to_Chinese [1. 手語輸入與辨識端 : TSL 轉中文]
-        A[視訊畫面輸入] --> B[MediaPipe 特徵擷取]
-        B --> C1【A 流】AI 辨識端<br>Transformer / GRU 時序模型
-        B --> C2【B 流】幾何辨識端<br>關節角度 / 向量物理規則
-        C1 --> D[LLM 語序重組 Engine]
+    subgraph TSL_to_Chinese ["1. 手語輸入與辨識端 : TSL 轉中文"]
+        A["視訊畫面輸入"] --> B["MediaPipe 特徵擷取"]
+        B --> C1["【A 流】AI 辨識端<br>Transformer / GRU 時序模型"]
+        B --> C2["【B 流】幾何辨識端<br>關節角度 / 向量物理規則"]
+        C1 --> D["LLM 語序重組 Engine"]
         C2 --> D
-        D --> E[中文文字 / 語音輸出]
+        D --> E["中文文字 / 語音輸出"]
     end
 
     %% 2. 手語雙向反饋與動畫端
-    subgraph Chinese_to_TSL [2. 手語雙向反饋與動畫端 : 中文轉 TSL]
-        F[用戶中文文字 / 語音輸入] --> G[ASR 語音辨識]
-        G --> H[字幕 ／ 動畫同步模組]
-        E -->|自動閉環驅動確認| H
-        H --> I[3D Avatar 手語呈現]
+    subgraph Chinese_to_TSL ["2. 手語雙向反饋與動畫端 : 中文轉 TSL"]
+        F["用戶中文文字 / 語音輸入"] --> G["ASR 語音辨識"]
+        G --> H["字幕 ／ 動畫同步模組"]
+        E -->|自动闭环驱动确认| H
+        H --> I["3D Avatar 手語呈現"]
     end
 
+    %% 套用樣式表
+    class A,F input;
+    class B,D,H core;
+    class E,I output;
+    class C1,C2 stream;
     %% 套用樣式表
     class A,F input;
     class B,D,H core;
