@@ -46,7 +46,7 @@ graph TD
         A["視訊畫面輸入"] --> B["MediaPipe 特徵擷取"]
         B --> C1["【A 流】AI 辨識端<br>Transformer/GRU/LSTM 時序模型"]
         B --> C2["【B 流】幾何辨識端<br>關節角度 / 向量物理規則"]
-        C1 --> D["LLM 語序重組 Engine"]
+        C1 --> D["LLM 語序重組"]
         C2 --> D
         D --> E["中文文字 / 語音輸出"]
     end
