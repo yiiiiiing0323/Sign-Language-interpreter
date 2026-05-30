@@ -101,4 +101,5 @@ graph TD
 
 目前專案目錄依據組員功能分工進行切分，各組員於對應資料夾下進行獨立開發、資料收集與演算法實驗，以便於未來進行模組化串接：
 Sign-Language-interpreter/
+
 └── README.md
