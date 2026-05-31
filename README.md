@@ -100,7 +100,7 @@ graph TD
 ## 📂 專案目錄結構 (Project Structure)
 
 目前專案目錄依據組員功能分工進行切分，各組員於對應資料夾下進行獨立開發、資料收集與演算法實驗，以便於未來進行模組化串接：
-
+```
 Sign-Language-interpreter/
 ├── sign_language_ai/        # 後端手勢雙流辨識核心資料夾
 │   ├── LSTM/                # 【A 流】LSTM 模型目錄 (主要資料源)
@@ -132,7 +132,7 @@ Sign-Language-interpreter/
 │       ├── best_transformer_model.pth # 訓練過程中 Loss 最小的最佳權重
 │       └── realtime_demo.py # 載入 Transformer 權重之攝影機即時辨識測試腳本
 └── README.md
-
+```
 ## ⚡ 獨立模組安裝與測試說明 (Development & Testing)
 
 由於目前系統尚未完全串接，請依據欲測試的模組分別進行環境配置與獨立執行驗證。
