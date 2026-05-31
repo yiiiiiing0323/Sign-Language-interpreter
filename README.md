@@ -102,5 +102,46 @@ graph TD
 目前專案目錄依據組員功能分工進行切分，各組員於對應資料夾下進行獨立開發、資料收集與演算法實驗，以便於未來進行模組化串接：
 
 Sign-Language-interpreter/
-
+├── sign_language_ai/        # 後端手勢雙流辨識核心資料夾
+│   ├── LSTM/                # 【A 流】LSTM 模型目錄 (主要資料源)
+│   │   ├── labels.py        # 建立標籤供訓練程式使用
+│   │   ├── labels.csv       # 標籤映射表 (CSV)
+│   │   ├── label_map.json   # 標籤映射字典 (JSON)
+│   │   ├── number.py        # 原始影片重新命名與排序工具 (防亂碼)
+│   │   ├── video_to_npy.py  # 調用 MediaPipe 將原始影片轉為 npy 時序特徵檔
+│   │   ├── train_lstm.py    # LSTM 模型訓練主程式
+│   │   ├── sign_lstm.pth    # 最終訓練完成的 LSTM 模型權重
+│   │   ├── best_sign_model.pth # 訓練過程中 Loss 最小的最佳模型權重
+│   │   └── realtime_demo_lstm.py # 載入 LSTM 權重之攝影機即時辨識測試腳本
+│   │
+│   ├── GRU/                 # 【A 流】GRU 模型目錄
+│   │   ├── labels.py        # 建立標籤供訓練程式使用
+│   │   ├── labels.csv       # 標籤映射表 (CSV)
+│   │   ├── label_map.json   # 標籤映射字典 (JSON)
+│   │   ├── train_gru.py     # GRU 模型訓練主程式 (讀取 LSTM/data 下之資料)
+│   │   ├── sign_gru.pth     # 最終訓練完成的 GRU 模型權重
+│   │   ├── best_sign_gru_model.pth # 訓練過程中 Loss 最小的最佳 GRU 權重
+│   │   └── demo_gru.py      # 載入 GRU 權重之攝影機即時辨識測試腳本
+│   │
+│   └── transformer/         # 【A 流】Transformer 模型目錄
+│       ├── labels.py        # 建立標籤供訓練程式使用
+│       ├── labels.csv       # 標籤映射表 (CSV)
+│       ├── label_map.json   # 標籤映射字典 (JSON)
+│       ├── train_transformer.py # Transformer 訓練主程式 (讀取 LSTM/data 下之資料)
+│       ├── sign_transformer.pth # 最終訓練完成的 Transformer 模型權重
+│       ├── best_transformer_model.pth # 訓練過程中 Loss 最小的最佳權重
+│       └── realtime_demo.py # 載入 Transformer 權重之攝影機即時辨識測試腳本
 └── README.md
+
+## ⚡ 獨立模組安裝與測試說明 (Development & Testing)
+
+由於目前系統尚未完全串接，請依據欲測試的模組分別進行環境配置與獨立執行驗證。
+
+### 後端 A 流（AI 深度學習辨識端）獨立實驗步驟
+
+#### 1. 環境套件建置
+確保您的 Python 環境為 3.8 以上，並安裝 MediaPipe、OpenCV 與深度學習核心套件：
+```bash
+pip install mediapipe opencv-python numpy torch
+2. 資料預處理與特徵提取 (以 LSTM 目錄為基礎)
+若需自行擴大詞彙或重新抽取特徵，請將影片置於 sign_language_ai/LSTM/videos/ 中並執行：
