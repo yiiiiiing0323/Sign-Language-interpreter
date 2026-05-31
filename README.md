@@ -186,12 +186,14 @@ python realtime_demo.py          # 載入訓練權重進行相機即時辨識測
 ### 後端 B 流（幾何邏輯辨識端）獨立實驗步驟
 B 流核心採用專家幾何規則匹配與時序狀態機管線，跳過深度學習模型的訓練成本，直接將 database.xlsx 內的 MediaPipe 3D 拓樸座標閾值鏈轉譯為即時判定結果。
 
-1. 規則資料庫動態配置
+#### 1. 規則資料庫動態配置
 B流的辨識規則完全由 database.xlsx 的 工作表3 進行管理。若需新增或修改手勢幾何邏輯，請直接編輯該 Excel 檔的 「MediaPipe 關鍵特徵」 欄位。
+
 -- 一般靜態手勢：使用布林與比較運算子連結特徵變數（如：is_flat_HAND and dist_HAND_8_FACE_1 < 0.5）。
+
 -- 動態連續手勢：使用時序語法結構定義多步驟動態軌跡（如：sequence([步驟1邏輯], [步驟2邏輯])）。
 
-2. 獨立語法檢查與安全規則評估測試
+#### 2. 獨立語法檢查與安全規則評估測試
 為了防止外部惡意修改 Excel 注入危險代碼，系統內建基於 AST（抽象語法樹）的 SafeRuleEvaluator 安全解析引擎，不使用危險的 eval()。可執行以下獨立指令進行核心邏輯與安全性測試：
 ```bash
 # 1. 驗證 B 流獨立模組與依賴環境之語法正確性
@@ -205,7 +207,7 @@ python -c "from core.safe_rule_engine import SafeRuleEvaluator; ev=SafeRuleEvalu
 python -c "from core.safe_rule_engine import SafeRuleEvaluator; ev=SafeRuleEvaluator(); print(ev.evaluate('danger()', {}))"
 # 預期輸出：明確顯示不支援「Call」或禁止執行任意 Python 程式碼之警告
 ```
-3. B 流即時判定與 3 幀穩定器測試
+#### 3. B 流即時判定與 3 幀穩定器測試
 B 流內建 required_stable_frames = 3 的防抖動防誤判機制。若要對 B 流進行獨立的即時影像流測試，可直接查閱日誌或運行封裝測試：
 ```bash
 # 查看 B 流系統初始化與專家規則載入狀態
@@ -216,7 +218,7 @@ python -c "from b_stream import BStreamGestureMatcher; matcher = BStreamGestureM
 ### 雲端 LLM（語意校正翻譯端）獨立實驗步驟
 LLM 翻譯端專職負責非同步手語語序重組、混淆詞上下文去歧義，以及網路異常時的自動多模型容錯轉移（Failover Routing）。
 
-1. 異步翻譯工作環境建置
+#### 1. 異步翻譯工作環境建置
 確保專案根目錄已建立 .env 設定檔並正確填入金鑰，同時安裝環境變數與網路請求套件：
 
 ```bash
@@ -226,14 +228,15 @@ pip install python-dotenv requests
 # 於專案根目錄下建立 .env 檔，內容如下：
 GEMINI_API_KEY=您的_GOOGLE_GEMINI_API_KEY
 ```
-2. 離線沙盒（Mock）與真實雲端 API 切換測試
+#### 2. 離線沙盒（Mock）與真實雲端 API 切換測試
 TranslationWorker 支援離線沙盒模式與真實雲端 API 模式。測試前請於 main.py 調整 use_real_api 參數：
 
 -- 離線測試 (Mock 模式)：use_real_api=False，系統將模擬 1 秒非同步延遲並回傳測試單字組，不消耗 API 額度。
 
 -- 真實翻譯模式：use_real_api=True，系統會直接呼叫 Google 雲端 API，依據 system_instruction 的 TSL 語法規範執行繁中語意潤飾。
 
-3. 自動容錯轉移 (Failover) 與連線驗證測試
+
+#### 3. 自動容錯轉移 (Failover) 與連線驗證測試
 為確保學校防火牆、超時（Timeout）或免費額度耗盡（HTTP 429 / 503 異常）時系統不會崩潰卡死，本系統內建三級備援路由機制。可在啟動主程式前執行獨立連線健康檢查：
 
 ```bash
@@ -250,11 +253,15 @@ for m in ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest']:
     except Exception as e: print(f'  Model [{m}] 網路連線失敗: {e}')
 "
 ```
-4. 智慧中斷點觸發（Smart Triggering）實時測試
+#### 4. 智慧中斷點觸發（Smart Triggering）實時測試
 當手語使用者比劃結束並放下雙手時，後台非同步執行緒將自動觸發翻譯流程：
+
 -- 運行 python main.py 並開啟 Webcam。
+
 -- 在鏡頭前比劃一組手勢（如：比劃「我」、「學校」、「去」）。
+
 -- 觸發中斷點：將雙手完全放下或移出畫面、或是保持動作停滯超過 2.0 秒 (Debounce Time)。
+
 -- 預期效果：底端黑色 UI 區塊將即時由 收集單字：我 學校 去 動態切換為 AI 翻譯中...，隨後渲染出精準校正後的繁體中文句子：我往學校去。（或 我往學校。），且影像擷取與骨架渲染始終維持穩定 FPS 不卡頓。
 
 ## ⚙️ 系統預期非功能性需求 (QoS 目標)
