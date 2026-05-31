@@ -144,5 +144,37 @@ Sign-Language-interpreter/
 ```bash
 pip install mediapipe opencv-python numpy torch
 ```
-2. 資料預處理與特徵提取 (以 LSTM 目錄為基礎)
+#### 2. 資料預處理與特徵提取 (以 LSTM 目錄為基礎)
 若需自行擴大詞彙或重新抽取特徵，請將影片置於 sign_language_ai/LSTM/videos/ 中並執行：
+```bash
+cd sign_language_ai/LSTM
+
+# 1. 將影片進行數字排序命名
+python number.py
+
+# 2. 建立訓練所需的標籤
+python labels.py
+
+# 3. 調用 MediaPipe 進行特徵點提取並生成 npy 檔案
+python video_to_npy.py
+```
+#### 3. 模型訓練與即時 Camera 測試
+您可以選擇進入 sign_language_ai 底下的三種架構進行獨立模型訓練與實時相機測試：
+LSTM 架構實驗：
+```bash
+cd sign_language_ai/LSTM
+python train_lstm.py             # 開始訓練
+python realtime_demo_lstm.py     # 載入訓練權重進行相機即時辨識測試
+```
+GRU 架構實驗：
+```bash
+cd sign_language_ai/GRU
+python train_gru.py              # 開始訓練 (讀取 LSTM 內資料源)
+python demo_gru.py               # 載入訓練權重進行相機即時辨識測試
+```
+Transformer 架構實驗：
+```bash
+cd sign_language_ai/transformer
+python train_transformer.py      # 開始訓練 (讀取 LSTM 內資料源)
+python realtime_demo.py          # 載入訓練權重進行相機即時辨識測試
+```
