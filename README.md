@@ -131,6 +131,9 @@ Sign-Language-interpreter/
 │       ├── sign_transformer.pth # 最終訓練完成的 Transformer 模型權重
 │       ├── best_transformer_model.pth # 訓練過程中 Loss 最小的最佳權重
 │       └── realtime_demo.py # 載入 Transformer 權重之攝影機即時辨識測試腳本
+├── 專題設計規格書.pdf
+├── 期中專題簡報.pdf
+├── 期末專題簡報.pdf
 └── README.md
 ```
 ## ⚡ 獨立模組安裝與測試說明 (Development & Testing)
