@@ -124,7 +124,7 @@ Sign-Language-interpreter/
 │   │   └── demo_gru.py      # 載入 GRU 權重之攝影機即時辨識測試腳本
 │   │
 │   └── transformer/         # 【A 流】Transformer 模型目錄
-│       ├── labels.py        # 建立標籤供訓練程式使用
+│       ├── make_labels.py        # 建立標籤供訓練程式使用
 │       ├── labels.csv       # 標籤映射表 (CSV)
 │       ├── label_map.json   # 標籤映射字典 (JSON)
 │       ├── train_transformer.py # Transformer 訓練主程式 (讀取 LSTM/data 下之資料)
