@@ -171,8 +171,6 @@ GRU 架構實驗：
 cd sign_language_ai/GRU
 python train_gru.py              # 開始訓練 (讀取 LSTM 內資料源)
 python demo_gru.py               # 載入訓練權重進行相機即時辨識測試
-
-
 ```
 Transformer 架構實驗：
 ```bash
