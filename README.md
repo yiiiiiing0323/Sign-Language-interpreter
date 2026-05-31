@@ -228,7 +228,9 @@ GEMINI_API_KEY=您的_GOOGLE_GEMINI_API_KEY
 ```
 2. 離線沙盒（Mock）與真實雲端 API 切換測試
 TranslationWorker 支援離線沙盒模式與真實雲端 API 模式。測試前請於 main.py 調整 use_real_api 參數：
+
 -- 離線測試 (Mock 模式)：use_real_api=False，系統將模擬 1 秒非同步延遲並回傳測試單字組，不消耗 API 額度。
+
 -- 真實翻譯模式：use_real_api=True，系統會直接呼叫 Google 雲端 API，依據 system_instruction 的 TSL 語法規範執行繁中語意潤飾。
 
 3. 自動容錯轉移 (Failover) 與連線驗證測試
