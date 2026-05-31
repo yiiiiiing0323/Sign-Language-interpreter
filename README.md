@@ -143,5 +143,6 @@ Sign-Language-interpreter/
 確保您的 Python 環境為 3.8 以上，並安裝 MediaPipe、OpenCV 與深度學習核心套件：
 ```bash
 pip install mediapipe opencv-python numpy torch
+```
 2. 資料預處理與特徵提取 (以 LSTM 目錄為基礎)
 若需自行擴大詞彙或重新抽取特徵，請將影片置於 sign_language_ai/LSTM/videos/ 中並執行：
