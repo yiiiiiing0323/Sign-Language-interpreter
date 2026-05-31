@@ -134,6 +134,7 @@ Sign-Language-interpreter/
 ├── 專題設計規格書.pdf
 ├── 期中專題簡報.pdf
 ├── 期末專題簡報.pdf
+├── LICENSE
 └── README.md
 ```
 ## ⚡ 獨立模組安裝與測試說明 (Development & Testing)
