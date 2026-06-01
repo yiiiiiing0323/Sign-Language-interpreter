@@ -149,6 +149,10 @@ Sign-Language-interpreter/
 |   │   └── logging_config.py       # system/error/performance Log 系統設定
 │   │
 |   └── sign_lstm.pth               # AI模型
+├── 3D_Animation_module/        # 3D 虛擬人動畫重定向與綁定模組
+│   ├── json_to_blender.py      # 將 AI 數據反正規化並生成 3D 空間目標追蹤點
+│   ├── apply_damped_track.py   # 自動為模型骨骼添加物理約束 (Damped Track)
+│   └── model_rigging.blend     # 包含 VRM 標準化虛擬人骨架的 Blender 專案檔
 │   
 ├── 專題設計規格書.pdf
 ├── 期中專題簡報.pdf
@@ -296,6 +300,26 @@ for m in ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest']:
 -- 觸發中斷點：將雙手完全放下或移出畫面、或是保持動作停滯超過 2.0 秒 (Debounce Time)。
 
 -- 預期效果：底端黑色 UI 區塊將即時由 收集單字：我 學校 去 動態切換為 AI 翻譯中...，隨後渲染出精準校正後的繁體中文句子：我往學校去。（或 我往學校。），且影像擷取與骨架渲染始終維持穩定 FPS 不卡頓。
+
+### 3D 動畫重定向與渲染端獨立實驗步驟
+本模組負責將前端 AI 捕捉到的手部特徵點，反正規化並透過物理約束器驅動 3D 虛擬人物。
+
+#### 1. 環境建置與模型規範
+* **軟體需求**：Blender 3.x 或 4.x 版本。
+* **相依套件**：無須額外安裝 pip 套件，完全使用 Blender 內建之 Python API (`bpy`)。
+* **模型規範**：支援符合 VRM 骨骼拓撲命名標準之 `.vrm` 虛擬人模型。
+
+#### 2. 資料反正規化與空間映射測試
+1. 使用 Blender 開啟 `3d_animation_module/model_rigging.blend`。
+2. 切換至 Scripting 工作區，開啟 `json_to_blender.py`。
+3. 將腳本底部的 `json_file_path` 替換為已萃取好特徵的 `.json` 檔案路徑。
+4. 點擊執行 (Run Script)。系統將自動判斷 JSON 格式進行座標反正規化，於 3D 空間生成目標追蹤十字線 (Empties)，並於角色上方生成目前的詞彙立體文字。
+
+#### 3. 物理約束 (IK) 驅動綁定測試
+1. 確認手腕容器已綁定於模型的腕部骨骼 (`J_Bip_L_Hand` / `J_Bip_R_Hand`)。
+2. 開啟並執行 `apply_damped_track.py`。
+3. 腳本將自動遍歷所有手指關節，附加 `DAMPED_TRACK` 約束並鎖定局部 Y 軸。
+4. 按下空白鍵 (Space) 播放時間軸，即可檢視虛擬人無破圖、高流暢度的手語還原動畫。
 
 ## ⚙️ 系統預期非功能性需求 (QoS 目標)
 在未來的系統整合階段，本團隊將以以下指標作為非功能性規格之優化目標：
