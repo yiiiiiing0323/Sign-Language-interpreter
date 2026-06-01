@@ -1,13 +1,12 @@
 import logging
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from typing import Union
+import sys
 
 
-def setup_logging(base_dir: Union[str, Path] = ".") -> None:
-    log_dir = Path(base_dir) / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-
+def setup_logging(*_args, **_kwargs) -> None:
+    """
+    Configure console-only logging.
+    The app no longer writes logs to disk.
+    """
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
     root.handlers.clear()
@@ -17,41 +16,17 @@ def setup_logging(base_dir: Union[str, Path] = ".") -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    system_handler = RotatingFileHandler(
-        log_dir / "system.log",
-        maxBytes=2_000_000,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    system_handler.setLevel(logging.DEBUG)
-    system_handler.setFormatter(formatter)
-
-    error_handler = RotatingFileHandler(
-        log_dir / "errors.log",
-        maxBytes=1_000_000,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    error_handler.setLevel(logging.ERROR)
-    error_handler.setFormatter(formatter)
-
-    root.addHandler(system_handler)
-    root.addHandler(error_handler)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.DEBUG)
+    console_handler.setFormatter(formatter)
+    root.addHandler(console_handler)
 
     performance_logger = logging.getLogger("performance")
     performance_logger.setLevel(logging.INFO)
-    performance_logger.propagate = False
+    performance_logger.propagate = True
     performance_logger.handlers.clear()
-
-    performance_handler = RotatingFileHandler(
-        log_dir / "performance.log",
-        maxBytes=1_000_000,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    performance_handler.setFormatter(formatter)
-    performance_logger.addHandler(performance_handler)
 
 
 def get_logger(name: str) -> logging.Logger:
+    """Return a standard logger."""
     return logging.getLogger(name)
