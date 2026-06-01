@@ -144,7 +144,7 @@ Sign-Language-interpreter/
 ### 後端 A 流（AI 深度學習辨識端）獨立實驗步驟
 
 #### 1. 環境套件建置
-確保您的 Python 環境為 3.8 以上，並安裝 MediaPipe、OpenCV 與深度學習核心套件：
+確保您的 Python 環境為 3.9 以上，並安裝 MediaPipe、OpenCV 與深度學習核心套件：
 ```bash
 pip install mediapipe opencv-python numpy torch
 ```
