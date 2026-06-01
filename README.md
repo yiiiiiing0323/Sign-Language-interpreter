@@ -131,6 +131,32 @@ Sign-Language-interpreter/
 │       ├── sign_transformer.pth # 最終訓練完成的 Transformer 模型權重
 │       ├── best_transformer_model.pth # 訓練過程中 Loss 最小的最佳權重
 │       └── realtime_demo.py # 載入 Transformer 權重之攝影機即時辨識測試腳本
+├── Sign-Language-interpreter/
+|   ├── main.py                     # 🌟 主程式：攝影機擷取、多執行緒、雙流融合與 UI 渲染
+|   ├── a_stream.py                 # 【A 流】即時特徵擷取、動態偵測、LSTM Tensor 產生器
+|   ├── b_stream.py                 # 【B 流】Excel 專家規則載入與安全邏輯解析
+|   ├── fusion.py                   # 【融合層】雙流決策加權、同義詞/混淆詞群組去歧義
+|   ├── database.xlsx               # B 流手語規則與 MediaPipe 幾何閾值資料庫
+|   ├── label_map.json              # 系統共用之手勢標籤映射字典
+|   ├── sign_lstm.pth               # 系統共用之最佳 LSTM 模型權重 (Production 版)
+|   ├── requirements.txt            # Python 套件清單
+|   ├── .env                        # Gemini API Key 環境變數
+|   │
+|   ├── core/                       # 核心引擎與工具庫
+|   │   ├── feature_registry.py     # 特徵登錄表、預設值、AI Tensor 維度定義
+|   │   ├── safe_rule_engine.py     # AST 安全規則解析器 (取代危險的 eval)
+|   │   ├── confidence.py           # 信心分數計算與時序平滑化工具
+|   │   └── logging_config.py       # system/error/performance Log 系統設定
+│   │
+|   ├── sign_language_ai/           # 🧠 後端手勢雙流辨識核心 (模型訓練與實驗區)
+|       ├── LSTM/                   # 【A 流】LSTM 模型目錄 (主要資料源)
+|           ├── labels.py           # 建立標籤供訓練程式使用
+|           ├── labels.csv          # 標籤映射表
+|           ├── number.py           # 原始影片重新命名與排序工具 (防亂碼)
+|           ├── video_to_npy.py     # 調用 MediaPipe 將影片轉為 npy 時序特徵檔
+|           ├── train_lstm.py       # LSTM 模型訓練主程式
+│           └── realtime_demo_lstm.py # LSTM 權重攝影機即時測試腳本
+│   
 ├── 專題設計規格書.pdf
 ├── 期中專題簡報.pdf
 ├── 期末專題簡報.pdf
