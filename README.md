@@ -148,7 +148,7 @@ Sign-Language-interpreter/
 |   │   ├── confidence.py           # 信心分數計算與時序平滑化工具
 |   │   └── logging_config.py       # system/error/performance Log 系統設定
 │   │
-|   ├── sign_lstm.pth               # AI模型
+|   └── sign_lstm.pth               # AI模型
 │   
 ├── 專題設計規格書.pdf
 ├── 期中專題簡報.pdf
