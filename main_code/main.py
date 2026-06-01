@@ -1,5 +1,8 @@
 print("[追蹤雷達] 1. 成功讀取檔案，開始執行...")
 
+import sys
+sys.dont_write_bytecode = True
+
 import cv2
 import numpy as np
 import time
@@ -10,6 +13,9 @@ import threading
 import requests   
 import os
 from dotenv import load_dotenv
+
+from core.feature_registry import AI_TENSOR_DIM
+from core.logging_config import get_logger, setup_logging
 
 # ========================================
 # ⭐ 新增：PyTorch 與融合模組
@@ -28,10 +34,78 @@ try:
     from b_stream import BStreamGestureMatcher
     print("[追蹤雷達] 4. 成功找到 a_stream 與 b_stream 模組...")
 except ImportError:
-    print("⚠️ 找不到 b_stream.py，程式可能無法完整運作。")
+    print("⚠️ 找不到 b_stream_matcher.py，程式可能無法完整運作。")
 
 # ⭐ 新增：匯入融合模組
 from fusion import DecisionFusion
+
+logger = get_logger(__name__)
+perf_logger = get_logger("performance")
+
+
+def resource_path(relative_path):
+    """
+    回傳專案資源檔的實際路徑。
+
+    為什麼需要這個函式：
+    1. 直接用 python main.py 執行時，資料檔通常在專案資料夾。
+    2. 用 PyInstaller 打包成 exe 後，資料檔會被複製到 exe 的暫存/輸出資料夾。
+    3. 如果程式仍然只寫 open("label_map.json")，exe 很容易因工作目錄不同而找不到檔案。
+
+    這個函式會優先找 PyInstaller 的資源資料夾，再找目前工作目錄，
+    讓同一份程式碼可以同時支援開發模式與可執行檔模式。
+    """
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    packaged_path = os.path.join(base_path, relative_path)
+    if os.path.exists(packaged_path):
+        return packaged_path
+    return os.path.join(os.getcwd(), relative_path)
+
+
+def open_camera(camera_indices=(0, 1, 2, 3), width=640, height=480):
+    """
+    嘗試開啟可用攝影機。
+
+    原本程式只嘗試 camera index 0：
+        cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
+    但 Windows 筆電常見狀況包括：
+    - 內建鏡頭不是 index 0
+    - 其他程式正在占用 index 0
+    - CAP_DSHOW 在某些攝影機驅動上失敗，但一般 backend 可用
+    - exe 模式下工作目錄不同，使用者只看到程式沒開鏡頭，log 又沒有說明
+
+    因此這裡會依序嘗試多個 index 與 backend。
+    每次成功/失敗都寫入 system.log，方便判斷問題是攝影機權限、index 錯誤，
+    還是 OpenCV backend 不相容。
+    """
+    backends = [
+        ("CAP_DSHOW", cv2.CAP_DSHOW),
+        ("DEFAULT", 0),
+    ]
+
+    for index in camera_indices:
+        for backend_name, backend in backends:
+            logger.info("嘗試開啟攝影機 index=%s backend=%s", index, backend_name)
+            cap = cv2.VideoCapture(index, backend) if backend else cv2.VideoCapture(index)
+            if not cap.isOpened():
+                cap.release()
+                logger.warning("攝影機開啟失敗 index=%s backend=%s", index, backend_name)
+                continue
+
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+            # 讀一幀確認不是「裝置 opened 但實際無畫面」。
+            ok, frame = cap.read()
+            if ok and frame is not None:
+                logger.info("攝影機開啟成功 index=%s backend=%s", index, backend_name)
+                return cap, index, backend_name
+
+            cap.release()
+            logger.warning("攝影機可開啟但讀不到畫面 index=%s backend=%s", index, backend_name)
+
+    return None, None, None
 
 # ========================================
 # ⭐ 新增：LSTM 模型定義
@@ -217,56 +291,91 @@ class TranslationWorker:
                 threading.Thread(target=self._call_llm, args=(words_to_translate,), daemon=True).start()
 
 # ==========================================
-# ⭐ 主程式
+# ⭐ 主程式 (大幅修改)
 # ==========================================
 def main():
+    # 只保留主控台輸出，不會在專案內建立 log 檔。
+    app_base_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
+    setup_logging(app_base_dir)
     print("[追蹤雷達] 5. 進入 main() 主程式區塊...")
+    logger.info("主程式啟動")
 
-    load_dotenv()
+    # .env 不建議打包進 exe，請放在 exe 同一層或專案資料夾中。
+    load_dotenv(resource_path(".env"))
     api_key = os.getenv("GEMINI_API_KEY")
     
     # ========================================
-    # ⭐ 修正區：初始化模型常數與緩衝區
+    # ⭐ 新增：載入 LSTM 模型
     # ========================================
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    TOTAL_DIM = 218
-    SEQ_LEN = 30
-    sequence_buffer = deque(maxlen=SEQ_LEN)
-    lstm_enabled = False
-    ai_model = None
-    
     try:
-        with open("label_map.json", "r", encoding="utf-8") as f:
-            idx2label = {int(k): v for k, v in json.load(f).items()}
-    
-        # 讀取 pth 權重檔
-        checkpoint = torch.load("sign_lstm.pth", map_location=device)
-    
-        # ⭐ 核心修正：從權重檔(fc.bias)反推當初訓練時的真實類別數量 (例如 41)
-        num_classes_in_model = checkpoint['fc.bias'].shape[0]
-    
-        # 建立神經網路時，使用 num_classes_in_model，而非 len(idx2label)
-        ai_model = SignRNN(TOTAL_DIM, 128, 2, num_classes_in_model).to(device)
-        ai_model.load_state_dict(checkpoint)
-        ai_model.eval()
+        # label_map.json 可能有 43 個「手型標籤」。
+        # 若模型輸出只有 41 類，下面會自動把 _A / _B 後綴合併成同一個最終詞。
+        with open(resource_path("label_map.json"), "r", encoding="utf-8") as f:
+            raw_idx2label = {int(k): v for k, v in json.load(f).items()}
+        
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        TOTAL_DIM = AI_TENSOR_DIM
+        SEQ_LEN = 30
 
-        print(f"[追蹤雷達] 5. 成功載入 LSTM 預測模型！(偵測到 {num_classes_in_model} 個類別)")
+        state_dict = torch.load(resource_path("sign_lstm.pth"), map_location=device)
+        model_class_count = state_dict["fc.weight"].shape[0]
+
+        clean_labels = []
+        for i in sorted(raw_idx2label):
+            clean_word = raw_idx2label[i].split('_')[0]
+            if clean_word not in clean_labels:
+                clean_labels.append(clean_word)
+
+        if model_class_count == len(clean_labels):
+            idx2label = {i: word for i, word in enumerate(clean_labels)}
+            if len(raw_idx2label) != len(clean_labels):
+                print(f"ℹ️ label_map 有 {len(raw_idx2label)} 個手型標籤，合併 _A/_B 後為 {len(clean_labels)} 個 LSTM 輸出詞")
+                logger.info(
+                    "label_map 手型標籤已合併 raw=%s clean=%s",
+                    len(raw_idx2label),
+                    len(clean_labels),
+                )
+        elif model_class_count == len(raw_idx2label):
+            idx2label = raw_idx2label
+        else:
+            print(f"⚠️ label_map 有 {len(raw_idx2label)} 個手型標籤、合併後 {len(clean_labels)} 個詞，但 LSTM 模型是 {model_class_count} 類；AI 流將使用可對應的前 {model_class_count} 類")
+            logger.warning(
+                "label_map 類別數與模型不一致 raw=%s clean=%s model=%s",
+                len(raw_idx2label),
+                len(clean_labels),
+                model_class_count,
+            )
+            idx2label = {
+                i: raw_idx2label.get(i, f"class_{i}").split('_')[0]
+                for i in range(model_class_count)
+            }
+        
+        model = SignRNN(TOTAL_DIM, 128, 2, model_class_count).to(device)
+        model.load_state_dict(state_dict)
+        model.eval()
+        
+        sequence_buffer = deque(maxlen=SEQ_LEN)
+        print(f"✅ LSTM 模型已載入 (裝置: {device})")
+        logger.info("LSTM 模型已載入 device=%s input_dim=%s seq_len=%s", device, TOTAL_DIM, SEQ_LEN)
         lstm_enabled = True
     except Exception as e:
-        print(f"⚠️ 無法載入 AI 模型或 label_map，將僅使用邏輯規則運作。錯誤: {e}")
+        print(f"⚠️ LSTM 模型載入失敗: {e}")
+        print("⚠️ 系統將只使用 B 流邏輯判斷")
+        logger.exception("LSTM 模型載入失敗，系統改用 B 流邏輯判斷")
         lstm_enabled = False
     
-# ========================================
-# 初始化模組
-# ========================================
-    a_stream_extractor = AStreamFeatureExtractor()
-    b_stream_matcher = BStreamGestureMatcher(excel_path="database.xlsx")
     
-    # 決策融合器
+    # ========================================
+    # 初始化模組
+    # ========================================
+    a_stream_extractor = AStreamFeatureExtractor()
+    b_stream_matcher = BStreamGestureMatcher(excel_path=resource_path("database.xlsx"))
+    
+    # ⭐ 新增：決策融合器
     decision_fusion = DecisionFusion()
 
     try:
-        df = pd.read_excel("database.xlsx")
+        df = pd.read_excel(resource_path("database.xlsx"))
         print("\n" + "="*50)
         print("🔍 [Excel X光機] 檢查 B 流讀取到的規則：")
         for idx, row in df.iterrows():
@@ -282,18 +391,19 @@ def main():
     print("[追蹤雷達] 6. 準備初始化 MediaPipe 視覺引擎...")
     mp_pose = mp.solutions.pose
     mp_hands = mp.solutions.hands
-    mp_face_mesh = mp.solutions.face_mesh
+    mp_face_mesh = mp.solutions.face_mesh  # ⭐ 新增
     mp_drawing = mp.solutions.drawing_utils
     
     pose = mp_pose.Pose(min_detection_confidence=0.7, min_tracking_confidence=0.7)
     hands = mp_hands.Hands(max_num_hands=2, 
                            min_detection_confidence=0.5,   
                            min_tracking_confidence=0.5)
-    face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)
+    face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)  # ⭐ 新增
+    logger.info("MediaPipe 視覺引擎初始化完成")
     
     translator = TranslationWorker(api_key=api_key, use_real_api=False)
 
-    # API 驗證
+    # API 驗證（保持不變）
     def _verify_api():
         import requests as _req
         key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -316,38 +426,58 @@ def main():
         print("🔍 [LLM 驗證] 完成\n")
     threading.Thread(target=_verify_api, daemon=True).start()
 
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) 
-    if not cap.isOpened(): cap = cv2.VideoCapture(0)
+    cap, camera_index, camera_backend = open_camera()
+    if cap is None:
+        message = (
+            "無法開啟攝影機。請確認：1. Windows 相機權限已開啟；"
+            "2. 沒有 Zoom/Teams/瀏覽器占用鏡頭；3. 裝置管理員看得到攝影機。"
+        )
+        print(f"🚨 {message}")
+        logger.error(message)
+        return
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     cv2.namedWindow('Gesture Recognition Core', cv2.WINDOW_NORMAL)
 
-    print("🟢 系統完全啟動成功！請對準鏡頭並比劃手勢... (按 'q' 退出)")
+    print(f"🟢 系統完全啟動成功！攝影機 index={camera_index}, backend={camera_backend}，請對準鏡頭並比劃手勢... (按 'q' 退出)")
+    logger.info("系統啟動完成 camera_index=%s backend=%s", camera_index, camera_backend)
 
     frame_count = 0
+    last_perf_log_time = time.time()
+    last_perf_frame_count = 0
+    
+    # ⭐ 新增：詞彙緩衝管理變數
     last_word = None
     last_word_time = 0
     WORD_COOLDOWN = 1.5
+    failed_frame_count = 0
     
     while True: 
         try:
             ret, frame = cap.read()
-            if not ret: continue
+            if not ret:
+                failed_frame_count += 1
+                if failed_frame_count % 30 == 0:
+                    logger.warning("攝影機連續讀取失敗 count=%s", failed_frame_count)
+                if failed_frame_count >= 150:
+                    logger.error("攝影機連續讀取失敗過多，停止主迴圈")
+                    break
+                continue
+            failed_frame_count = 0
                 
             frame_count += 1
+            frame_start_time = time.perf_counter()
             frame = cv2.flip(frame, 1)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             rgb_frame = np.ascontiguousarray(rgb_frame)
             
-            img_h, img_w = frame.shape[:2]
+            img_h, img_w = frame.shape[:2]  # ⭐ 新增：取得影像尺寸
             
             # ========================================
-            # MediaPipe 偵測
+            # MediaPipe 偵測（加入 Face Mesh）
             # ========================================
             pose_results = pose.process(rgb_frame)
             hand_results = hands.process(rgb_frame)
-            face_results = face_mesh.process(rgb_frame)
+            face_results = face_mesh.process(rgb_frame)  # ⭐ 新增
 
             # 畫骨架
             hands_present = False
@@ -359,12 +489,12 @@ def main():
                     mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
             # ========================================
-            # ⭐ A流：提取特徵
+            # ⭐ A流：提取特徵（修改為回傳兩個值）
             # ========================================
             current_features, ai_tensor = a_stream_extractor.extract_features(
                 pose_results, 
                 hand_results, 
-                face_results, 
+                face_results,  # ⭐ 新增
                 img_w, 
                 img_h
             )
@@ -380,7 +510,7 @@ def main():
                 print("-" * 40)
 
             # ========================================
-            # ⭐ A流：LSTM 預測
+            # ⭐ A流：LSTM 預測（新增）
             # ========================================
             ai_result = None
             if lstm_enabled and hand_results and hand_results.multi_hand_landmarks:
@@ -390,7 +520,7 @@ def main():
                     x_in = torch.tensor([list(sequence_buffer)], dtype=torch.float32).to(device)
                     
                     with torch.no_grad():
-                        outputs = ai_model(x_in) # ⭐ 修正：從 model 改為 ai_model
+                        outputs = model(x_in)
                         probs = torch.softmax(outputs, dim=1)[0]
                         
                         TOP_K = 5
@@ -430,19 +560,17 @@ def main():
             # ========================================
             # ⭐ B流：邏輯判斷
             # ========================================
-            gesture_name = b_stream_matcher.evaluate_frame(current_features)
-            
-            logic_result = None
-            if gesture_name:
-                logic_result = (gesture_name, 0.9)
+            logic_result = b_stream_matcher.evaluate_frame_with_confidence(current_features)
+            gesture_name = logic_result[0] if logic_result else None
 
             # ========================================
-            # ⭐ 決策融合
+            # ⭐ 決策融合（新增）
             # ========================================
             final_word, source = decision_fusion.fuse(ai_result, logic_result)
+            final_confidence = decision_fusion.last_confidence
             
             # ========================================
-            # ⭐ 詞彙緩衝區管理
+            # ⭐ 詞彙緩衝區管理（新增）
             # ========================================
             current_time = time.time()
             
@@ -452,6 +580,31 @@ def main():
                     last_word = final_word
                     last_word_time = current_time
                     print(f"✅ 新增詞彙: {final_word} (來源: {source})")
+                    logger.info(
+                        "新增詞彙 word=%s source=%s confidence=%.3f ai=%s logic=%s",
+                        final_word,
+                        source,
+                        final_confidence,
+                        ai_result,
+                        logic_result,
+                    )
+
+            if frame_count % 30 == 0:
+                elapsed = max(1e-6, current_time - last_perf_log_time)
+                fps = (frame_count - last_perf_frame_count) / elapsed
+                frame_ms = (time.perf_counter() - frame_start_time) * 1000
+                perf_logger.info(
+                    "fps=%.2f frame_ms=%.2f hands=%s ai=%s logic=%s final=%s confidence=%.3f",
+                    fps,
+                    frame_ms,
+                    hands_present,
+                    ai_result,
+                    logic_result,
+                    final_word,
+                    final_confidence,
+                )
+                last_perf_log_time = current_time
+                last_perf_frame_count = frame_count
 
             translator.check_and_translate(hands_present=hands_present)
             
@@ -466,7 +619,7 @@ def main():
 
             cv2.putText(frame, f"State: {hand_status}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             
-            # 顯示融合來源
+            # ⭐ 新增：顯示融合來源
             if source:
                 color_map = {
                     "BOTH": (0, 255, 0),
@@ -477,7 +630,7 @@ def main():
                     "AI": (200, 200, 200)
                 }
                 source_color = color_map.get(source, (150, 150, 150))
-                cv2.putText(frame, f"Source: {source}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, source_color, 2)
+                cv2.putText(frame, f"Source: {source} {final_confidence:.2f}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, source_color, 2)
             
             cv2.rectangle(frame, (0, 400), (640, 480), (0, 0, 0), -1)
             
@@ -500,9 +653,9 @@ def main():
 
         except Exception as e:
             error_details = traceback.format_exc()
-            with open("error_log.txt", "w", encoding="utf-8") as f: f.write(error_details)
-            print("🚨 發生錯誤！請查看 error_log.txt")
+            print("🚨 發生錯誤，錯誤訊息已直接輸出到主控台")
             print(error_details)
+            logger.exception("主迴圈發生錯誤")
             time.sleep(5)
             break
 
