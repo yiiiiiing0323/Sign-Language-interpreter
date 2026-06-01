@@ -1,3 +1,6 @@
+import sys
+sys.dont_write_bytecode = True
+
 import numpy as np
 import mediapipe as mp
 from collections import defaultdict
@@ -421,6 +424,24 @@ class AStreamFeatureExtractor:
             'dist_RIGHT_HAND_0_POSE_HIP': 99.0,           # 右手腕到右臀距離（上下車骨盆位置）
             'detect_body_sway_large_amplitude': False,     # 身體大幅左右搖擺（飆車）
             'is_four_fingers_closed_BOTH_HANDS': False,    # 雙手四指伸直拇指收（停車/塞車/車禍）
+
+            'palm_facing_in_BOTH_HANDS': False,
+            'move_horizontal_apart_BOTH_HANDS': False,
+            'palms_down_BOTH_HANDS': False,
+            'detect_swipe_outwards_HAND': False,
+            'vector_align_RIGHT_HAND_8_DOWN_AXIS': 0.0,
+            'is_claw_RIGHT_HAND': False,
+            'detect_swipe_RIGHT_HAND_horizontal': False,
+            'detect_wiggle_BOTH_HANDS': False,
+            'move_downwards_BOTH_HANDS': False,
+            'tips_down_BOTH_HANDS': False,
+            'detect_slap_HAND': False,
+            'dist_HAND_FACE_234': 99.0,
+            'dist_HAND_FACE_454': 99.0,
+            'dist_START_HAND_POSE_CHEST': 99.0,
+            'dist_RIGHT_HAND_8_POSE_NOSE': 99.0,
+            'dist_RIGHT_HAND_0_RIGHT_SHOULDER': 99.0,
+            'is_ring_finger_extended_LEFT_HAND': False, # 確保沒偵測到雙手時也有這個鍵值
         }
         current_features = FEATURE_REGISTRY.create_feature_dict(current_features)
 
@@ -571,6 +592,10 @@ class AStreamFeatureExtractor:
                 current_features['dist_RIGHT_HAND_4_FACE_FOREHEAD'] = round(calculate_dist_2d(hand_lms[4], forehead_point) / shoulder_width, 3)
                 current_features['dist_RIGHT_HAND_0_FACE_SIDE'] = round(calculate_dist_2d(wrist, face_side_point) / shoulder_width, 3)
                 current_features['dist_RIGHT_HAND_0_LEFT_CHEST'] = round(calculate_dist_2d(wrist, left_chest_point) / shoulder_width, 3)
+                # dist_RIGHT_HAND_8_POSE_NOSE 可以直接用 dist_HAND_8_FACE_1 代替
+                current_features['dist_RIGHT_HAND_8_POSE_NOSE'] = current_features.get('dist_HAND_8_FACE_1', 99.0)
+                # dist_RIGHT_HAND_0_RIGHT_SHOULDER 可以用 dist_HAND_POSE_SHOULDER_RIGHT 代替
+                current_features['dist_RIGHT_HAND_0_RIGHT_SHOULDER'] = current_features.get('dist_HAND_POSE_SHOULDER_RIGHT', 99.0)
 
                 # 🟢 新增：右手腕到右臀距離（上下車骨盆點 = p_lms[24]）
                 hip_r = Point2D(p_lms[24].x, p_lms[24].y)
