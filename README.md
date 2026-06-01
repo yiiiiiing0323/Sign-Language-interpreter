@@ -310,7 +310,7 @@ for m in ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest']:
 * **模型規範**：支援符合 VRM 骨骼拓撲命名標準之 `.vrm` 虛擬人模型。
 
 #### 2. 資料反正規化與空間映射測試
-1. 使用 Blender 開啟 `3d_animation_module/model_rigging.blend`。
+1. 使用 Blender 開啟 `3D_Animation_module/model_rigging.blend`。
 2. 切換至 Scripting 工作區，開啟 `json_to_blender.py`。
 3. 將腳本底部的 `json_file_path` 替換為已萃取好特徵的 `.json` 檔案路徑。
 4. 點擊執行 (Run Script)。系統將自動判斷 JSON 格式進行座標反正規化，於 3D 空間生成目標追蹤十字線 (Empties)，並於角色上方生成目前的詞彙立體文字。
@@ -319,7 +319,7 @@ for m in ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest']:
 1. 確認手腕容器已綁定於模型的腕部骨骼 (`J_Bip_L_Hand` / `J_Bip_R_Hand`)。
 2. 開啟並執行 `apply_damped_track.py`。
 3. 腳本將自動遍歷所有手指關節，附加 `DAMPED_TRACK` 約束並鎖定局部 Y 軸。
-4. 按下空白鍵 (Space) 播放時間軸，即可檢視虛擬人無破圖、高流暢度的手語還原動畫。
+4. 按下空白鍵 (Space) 播放時間軸，即可檢視虛擬人的手語還原動畫。
 
 ## ⚙️ 系統預期非功能性需求 (QoS 目標)
 在未來的系統整合階段，本團隊將以以下指標作為非功能性規格之優化目標：
