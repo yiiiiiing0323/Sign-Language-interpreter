@@ -153,7 +153,47 @@ Sign-Language-interpreter/
 │   ├── json_to_blender.py      # 將 AI 數據反正規化並生成 3D 空間目標追蹤點
 │   ├── apply_damped_track.py   # 自動為模型骨骼添加物理約束 (Damped Track)
 │   └── model_rigging.blend     # 包含 VRM 標準化虛擬人骨架的 Blender 專案檔
-│   
+│
+├── UI/        # 3D 虛擬人動畫重定向與綁定模組
+|   ├── 20260528-1/
+|   │   ├── auth.css     # 
+|   │   ├── base.css     # 
+|   │   ├── components.css     # 
+|   │   ├── forgetpw.js     # 
+|   │   ├── forgetpw.html    # 
+|   │   ├── home.css     # 
+|   │   ├── home.js     # 
+|   │   ├── home.html     # 
+|   │   ├── index.html     # 
+|   │   ├── index.css     #
+|   │   ├── login.css     # 
+|   │   ├── login.js     # 
+|   │   ├── login.html     #
+|   │   ├── operation.css     # 
+|   │   ├── operation.js     # 
+|   │   ├── operation.html     #
+|   │   ├── record.css     # 
+|   │   ├── record.js     # 
+|   │   ├── record.html     # 
+|   │   ├── register.html     #
+|   │   ├── register.css     #
+|   │   ├── settings.css     # 
+|   │   ├── settings.js     # 
+|   │   ├── settings.html     # 
+|   │   ├── translate.css     # 
+|   │   ├── translate.js     # 
+|   │   ├── translate.html     #
+|   │   ├── operation pic/ #操作說明頁所需要的操作截圖
+|   │   │   ├── 1.png
+|   │   │   ├── 2.png
+|   │   │   ├── 2-1.png
+|   │   │   ├── 2-2.png
+|   │   │   ├── 3.png
+|   │   │   ├── 4.png
+|   │   │   ├── 4-1.png
+|   │   │   ├── 4-1-1.png     
+|   │   │   ├── 4-2.png        
+│
 ├── 專題設計規格書.pdf
 ├── 期中專題簡報.pdf
 ├── 期末專題簡報.pdf
@@ -320,6 +360,22 @@ for m in ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest']:
 2. 開啟並執行 `apply_damped_track.py`。
 3. 腳本將自動遍歷所有手指關節，附加 `DAMPED_TRACK` 約束並鎖定局部 Y 軸。
 4. 按下空白鍵 (Space) 播放時間軸，即可檢視虛擬人的手語還原動畫。
+
+### 前端 UI (使用者介面端) 獨立實驗步驟
+本模組負責建構使用者介面，並整合前端多媒體設備（相機、麥克風）控制、歷史對話即時模糊檢索、以及分頁狀態連動管理。
+
+#### 1. 環境建置與模型規範
+* **軟體需求**：現代主流瀏覽器（Chrome / Edge / Safari）環境。
+* **技術架構**：：原生 HTML5、CSS3（採用變數 --border-color 與彈性盒子 Flexbox 佈局）與標準 JavaScript (ES6+)。
+
+#### 2. 網頁聯動測試
+1. 使用瀏覽器開啟 index.html 初始頁
+2. 點擊"登入"按鈕進入login.html 登入頁
+3. 沒有帳號的點擊"註冊帳號"按鈕；已經註冊過帳號輸入帳號密碼，若是忘記密碼則點擊"忘記密碼？"按鈕；最後利用帳號密碼登入
+4. 跳轉至home.html頁，勾選"我已詳細閱讀並理解上述操作說明"後方可進入系統
+5. 點擊左上角選單按鈕選擇前往各個分頁(系統介紹home.html，操作說明 operation.html, 歷史紀錄 record.html, AI智能助理 translate.html)
+6. 點擊右上角頭貼選擇前往設定settings.html或登出
+7. AI智能助理 translate.html 為本系統主要功能，進入此分頁後，會詢問是否允許開啟相機及麥克風，允許後相機會自動打開，使用者可以對著自己電腦的前鏡頭比劃動作，點擊麥克風後會開始錄製聲音並且再次點擊結束後會詢問錄音檔存放位置；其餘功能如設定、關閉AI助理可利用圖示自行探索
 
 ## ⚙️ 系統預期非功能性需求 (QoS 目標)
 在未來的系統整合階段，本團隊將以以下指標作為非功能性規格之優化目標：
