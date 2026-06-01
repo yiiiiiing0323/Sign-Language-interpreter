@@ -148,14 +148,7 @@ Sign-Language-interpreter/
 |   │   ├── confidence.py           # 信心分數計算與時序平滑化工具
 |   │   └── logging_config.py       # system/error/performance Log 系統設定
 │   │
-|   ├── sign_language_ai/           # 🧠 後端手勢雙流辨識核心 (模型訓練與實驗區)
-|       ├── LSTM/                   # 【A 流】LSTM 模型目錄 (主要資料源)
-|           ├── labels.py           # 建立標籤供訓練程式使用
-|           ├── labels.csv          # 標籤映射表
-|           ├── number.py           # 原始影片重新命名與排序工具 (防亂碼)
-|           ├── video_to_npy.py     # 調用 MediaPipe 將影片轉為 npy 時序特徵檔
-|           ├── train_lstm.py       # LSTM 模型訓練主程式
-│           └── realtime_demo_lstm.py # LSTM 權重攝影機即時測試腳本
+|   ├── sign_lstm.pth               # AI模型
 │   
 ├── 專題設計規格書.pdf
 ├── 期中專題簡報.pdf
