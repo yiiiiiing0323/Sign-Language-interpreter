@@ -1,3 +1,6 @@
+import sys
+sys.dont_write_bytecode = True
+
 import pandas as pd
 import re
 import time
@@ -9,6 +12,16 @@ from core.safe_rule_engine import SafeRuleEvaluator
 logger = logging.getLogger(__name__)
 
 class BStreamGestureMatcher:
+    """
+    B 流規則辨識器。
+
+    主要職責：
+    1. 從 database.xlsx 讀取手語規則。
+    2. 將 A 流輸出的 current_features 套入 Excel 條件。
+    3. 支援一般單幀規則與 sequence([...], [...]) 連續動作規則。
+    4. 透過安全 AST evaluator 評估規則，不使用 eval()。
+    5. 回傳手語詞與規則信心分數，交給 fusion.py 與 AI 流整合。
+    """
     def __init__(self, excel_path="database.xlsx"):
         logger.info("[B流] 系統初始化")
         try:
@@ -44,7 +57,15 @@ class BStreamGestureMatcher:
         return result
 
     def _parse_sequence(self, condition_str):
-        """解析 sequence([Step1], [Step2], [Step3]) 結構"""
+        """
+        解析 sequence([Step1], [Step2], [Step3]) 結構。
+
+        Excel 規則可以寫成：
+            sequence([is_flat_HAND], [move_downwards_RIGHT_HAND])
+
+        每個中括號代表一個階段。B 流會用 sequence_states 記住目前走到第幾步，
+        並用 sequence_timeout 避免使用者停太久後仍誤判為同一個連續動作。
+        """
         if not isinstance(condition_str, str) or not condition_str.startswith("sequence"):
             return None
             
@@ -66,10 +87,24 @@ class BStreamGestureMatcher:
         return steps
 
     def evaluate_frame(self, variables: dict):
+        """
+        舊版相容 API。
+
+        舊主程式只需要手語詞，因此這個方法仍回傳 word 或 None。
+        新版 main.py 會改呼叫 evaluate_frame_with_confidence() 取得信心分數。
+        """
         result = self.evaluate_frame_with_confidence(variables)
         return result[0] if result else None
 
     def evaluate_frame_with_confidence(self, variables: dict):
+        """
+        評估目前影格的所有 Excel 規則，回傳 (word, confidence) 或 None。
+
+        confidence 來源：
+        - 一般規則：SafeRuleEvaluator 根據條件命中狀態給分。
+        - sequence 規則：完成最後一步時給較高分。
+        - 穩定幀：同一結果連續出現 required_stable_frames 幀後才輸出。
+        """
         best_match = None
         best_confidence = 0.0
         current_time = time.time()
