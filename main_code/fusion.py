@@ -3,6 +3,9 @@
 負責整合 A流(AI) 和 B流(邏輯) 的結果
 """
 
+import sys
+sys.dont_write_bytecode = True
+
 import logging
 
 from core.confidence import TemporalSmoother, weighted_confidence
@@ -12,6 +15,23 @@ logger = logging.getLogger(__name__)
 
 
 class DecisionFusion:
+    """
+    A 流 AI 與 B 流規則的決策融合器。
+
+    輸入：
+    - ai_result: LSTM 產生的 (word, confidence)
+    - logic_result: B 流規則產生的 (word, confidence)
+
+    輸出：
+    - final_word: 最終要送給翻譯器的詞
+    - source: 結果來源，例如 AI / LOGIC / BOTH / CONFUSABLE
+
+    這裡同時處理：
+    - 同義詞合併
+    - 混淆詞保留
+    - AI 與規則信心分數加權
+    - temporal smoothing，降低連續影格閃爍
+    """
     def __init__(self):
         # ========================================
         # ===== 同義詞群組（語意相同的詞）=====
@@ -115,6 +135,14 @@ class DecisionFusion:
     
     
     def _finish(self, word, source, confidence):
+        """
+        統一收尾融合結果。
+
+        所有融合分支最後都會走到這裡：
+        1. 將 confidence 放入 TemporalSmoother。
+        2. 更新 last_confidence，讓 main.py 可以顯示分數。
+        3. 寫入 system.log，方便日後追查 AI/B 流衝突。
+        """
         smoothed_word, smoothed_confidence = self.smoother.update(word, confidence)
         self.last_confidence = smoothed_confidence
         if not smoothed_word:
@@ -140,15 +168,17 @@ class DecisionFusion:
             source: "AI", "LOGIC", "BOTH", "SYNONYM", "CONFUSABLE", "UNCERTAIN", None
         """
         
-        # 情況 1：只有一方有結果
+        # 情況 1：兩方都沒有結果，代表目前影格沒有可靠手語詞。
         if ai_result is None and logic_result is None:
             self.last_confidence = 0.0
             self.smoother.update(None, 0.0)
             return None, None
         
+        # 情況 2：只有 B 流命中，直接使用規則結果，但仍會進 temporal smoothing。
         if ai_result is None:
             return self._finish(logic_result[0], "LOGIC", logic_result[1])
         
+        # 情況 3：只有 AI 流命中，直接使用 AI 結果。
         if logic_result is None:
             return self._finish(ai_result[0], "AI", ai_result[1])
         
@@ -156,12 +186,12 @@ class DecisionFusion:
         ai_word, ai_conf = ai_result
         logic_word, logic_conf = logic_result
         
-        # 子情況 2a：完全相同
+        # 子情況 4a：AI 與 B 流完全同意，給額外加分。
         if ai_word == logic_word:
             confidence = weighted_confidence(logic_conf, ai_conf)
             return self._finish(ai_word, "BOTH", min(1.0, confidence + 0.10))
         
-        # 子情況 2b：混淆詞（動作相似但語意不同）
+        # 子情況 4b：動作相似但語意不同，保留成候選組合，避免翻譯器過早選錯。
         if self.are_confusable(ai_word, logic_word):
             merged = self.merge_confusable_words([ai_word, logic_word])
             # 記錄統計
@@ -170,13 +200,13 @@ class DecisionFusion:
             confidence = weighted_confidence(logic_conf, ai_conf, rule_weight=0.5, ai_weight=0.5)
             return self._finish(merged, "CONFUSABLE", confidence)
         
-        # 子情況 2c：同義詞
+        # 子情況 4c：同義詞或 A/B 版本，合併後輸出。
         if self.are_similar(ai_word, logic_word):
             merged = self.merge_similar_words(ai_word, logic_word)
             confidence = weighted_confidence(logic_conf, ai_conf)
             return self._finish(merged, "SYNONYM", confidence)
         
-        # 子情況 2d：完全不同，用信心度加權
+        # 子情況 4d：完全不同時，依信心分數加權比較。
         LOGIC_WEIGHT = 1.2  # ⭐ 邏輯流較可靠，給予加成
         AI_WEIGHT = 1.0
         
