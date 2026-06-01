@@ -1,0 +1,510 @@
+/* --- 頂部導覽列按鈕微調 --- */
+.top-navbar {
+    display: flex;
+    justify-content: space-between; /* 兩端對齊 */
+    align-items: center;
+    padding: 10px 24px;
+    background-color: #fff;
+    border-bottom: 2px solid #000;
+    height: 60px;
+    position: relative;
+}
+
+.navbar-center-title {
+    font-weight: 900;
+    font-size: 1.2rem;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+/* 點擊下去的實體壓入感 */
+.back-to-menu-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0px #000;
+}
+
+/* 漢堡排按鈕樣式 */
+.menu-toggle-btn {
+    background: #fff;
+    border: 2px solid #000;
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    box-shadow: 2px 2px 0px #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.menu-toggle-btn:hover {
+    background: #f0f0f0;
+}
+
+.menu-toggle-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0px #000;
+}
+
+.user-menu-container {
+    position: relative; /* 關鍵：讓內部的下拉選單對齊它 */
+}
+
+/* 頭像外圈樣式（維持你原本的精緻圓圈） */
+.user-avatar {
+    width: 40px;
+    height: 40px;
+    border: 2px solid #000;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.5rem;
+    background-color: #fff;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+.user-avatar:hover {
+    background-color: #f0f0f0;
+}
+
+/* 🔒 下拉選單主體（修正：預設必須隱藏！） */
+.dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: 50px; /* 往下移一點，不要貼扁頭像 */
+    width: 150px;
+    background: white;
+    border: 2px solid #000;
+    box-shadow: 4px 4px 0px #000; /* 延續你的粗黑陰影風格 */
+    display: none; /* 關鍵：預設完全收起來，點擊才打開 */
+    flex-direction: column;
+    text-align: center; 
+    z-index: 1000;
+}
+
+/* 當 JS 加上 .active 類別時才展開 */
+.dropdown-menu.active {
+    display: flex;
+}
+
+/* 下拉選單裡面的超連結選項 */
+.dropdown-menu a {
+    padding: 12px 20px;
+    text-decoration: none;
+    color: #000;
+    border-bottom: 1px solid #000; /* 改為黑實線更符合新野獸派風格 */
+    font-size: 1rem;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.dropdown-menu a:last-child {
+    border-bottom: none; /* 最後一個選項去掉底線 */
+}
+
+.dropdown-menu a:hover {
+    background-color: #f0f0f0;
+}
+
+/* 登出按鈕稍微醒目一點的紅色警示或懸停效果 */
+.dropdown-menu a.logout-link:hover {
+    background-color: #ffe6e6;
+    color: #ff4d4d;
+}
+
+/* --- 側邊欄抽屜選單系統 --- */
+
+/* 背景半透明遮罩 */
+.sidebar-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1500;
+    display: none; /* 預設隱藏 */
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.active {
+    display: block;
+    opacity: 1;
+}
+
+/* 側邊欄本體 */
+.sidebar-menu {
+    position: fixed;
+    top: 0; left: -280px; /* 預設藏在畫面左邊外側 */
+    width: 260px;
+    height: 100vh;
+    background: #fff;
+    border-right: 3px solid #000;
+    box-shadow: 5px 0 0 rgba(0,0,0,0.05);
+    z-index: 1600;
+    display: flex;
+    flex-direction: column;
+    transition: left 0.3s cubic-bezier(0.1, 0.9, 0.2, 1); /* 順暢回彈動效 */
+}
+
+/* 當啟用時滑出 */
+.sidebar-menu.active {
+    left: 0;
+}
+
+/* 側邊欄頂部 */
+.sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 16px;
+    border-bottom: 2px solid #000;
+    background: #f8f9fa;
+}
+
+.sidebar-logo {
+    font-weight: 900;
+    font-size: 1.1rem;
+}
+
+.close-sidebar-btn {
+    background: none;
+    border: 1px solid transparent;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.close-sidebar-btn:hover {
+    color: #ff4d4d;
+}
+
+/* 選單導航連結 */
+.sidebar-nav {
+    padding: 15px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: #000;
+    font-weight: bold;
+    padding: 12px 16px;
+    font-size: 1rem;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+/* 滑鼠懸停與當前頁面選中 (Active) 狀態 */
+.sidebar-item:hover {
+    background: #f0f0f0;
+    border-color: #000;
+}
+
+.sidebar-item.active {
+    background: #000;
+    color: #fff;
+    border-color: #000;
+    box-shadow: 3px 3px 0 #00ffff; /* 呼應你的系統亮點色青色 */
+}
+
+.sidebar-icon {
+    font-size: 1.2rem;
+}
+
+/* 主內容修正：避免高度塌陷 */
+.content-container {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    height: calc(100vh - 60px);
+    flex-direction: column;
+    overflow-y: auto !important; /* 允許垂直滾動 */
+    padding: 40px 20px !important;
+    box-sizing: border-box !important;
+    gap: 40px;
+}
+
+/* 2. 介紹卡片主體 */
+.intro-card {
+    background: #fff;
+    border: 3px solid #000;
+    max-width: 1000px;
+    width: 100%;
+    box-shadow: 8px 8px 0px #000; /* 經典硬派陰影 */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shrink: 0;
+    flex-shrink: 0
+}
+
+/* 卡片頂部標題列區 */
+.card-header {
+    padding: 12px 24px;
+    border-bottom: 3px solid #000;
+}
+.card-header h2 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 900;
+    color: #000;
+}
+
+/* 亮眼的新野獸派高飽和底色（呼應你的系統風格） */
+.bg-cyan   { background-color: #00ffff; }
+.bg-yellow { background-color: #ffde4d; }
+.bg-purple { background-color: #b57cff; }
+.bg-green  { background-color: #00ffcc; }
+
+/* 3. 卡片內部雙欄內容區 */
+.card-body {
+    display: flex;
+    padding: 30px;
+    gap: 30px;
+    align-items: center;
+}
+
+/* 文字部分排版 */
+.text-content {
+    flex: 1.2;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+.text-content p {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #222;
+    font-weight: bold; /* 新野獸派字體偏粗 */
+}
+.text-content ul {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 4. 圖片部分排版與新野獸派黑框外殼 */
+.image-content {
+    flex: 0.8;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 圖片外框（你可以直接把裡面的 <span> 換成真正的 <img src="...">） */
+.img-placeholder {
+    width: 100%;
+    height: 200px;
+    background: #fafafa;
+    border: 2px solid #000;
+    box-shadow: 4px 4px 0px #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #555;
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 10px;
+    box-sizing: border-box;
+}
+/* 真正的圖片樣式支援 */
+.img-placeholder img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* 5. 【核心層次感】圖文左右反轉邏輯 */
+.intro-card.alt-layout .card-body {
+    flex-direction: row-reverse; /* 讓文字和圖片左右顛倒 */
+}
+
+/* =========================================================================
+   新野獸派風格：首頁初始操作說明彈窗
+   ========================================================================= */
+
+/* 歡迎彈窗大遮罩：加入高級毛玻璃模糊效果 */
+#welcomeModal.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    
+    /* 1. 微調背景顏色，讓黑色稍微帶一點點透明度，背景才透得過來 */
+    background: rgba(0, 0, 0, 0.35); 
+    
+    /* 2. 關鍵核心：加上這一行，直接讓遮罩後方的所有網頁元件完美模糊！ */
+    backdrop-filter: blur(8px); 
+    -webkit-backdrop-filter: blur(8px); /* 完美相容 Safari 瀏覽器 */
+    
+    display: none; /* 預設隱藏 */
+    justify-content: center;
+    align-items: center;
+    z-index: 9999; /* 確保在全站最上層 */
+    
+    /* 讓模糊效果出現時帶有平滑的漸變感 */
+    transition: all 0.3s ease; 
+}
+
+/* 當有 active 時才顯現 */
+#welcomeModal.modal-overlay.active {
+    display: flex;
+}
+
+/* 歡迎彈窗方框本體 */
+.welcome-box {
+    background: #fff;
+    width: 500px;
+    max-width: 90%;
+    border: 3px solid #000;
+    box-shadow: 10px 10px 0px #000; /* 強烈黑影 */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: welcomeShow 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes welcomeShow {
+    from { transform: scale(0.9) translateY(20px); opacity: 0; }
+    to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+/* 彈窗頂部橘黃色亮點 Header */
+.welcome-header {
+    background: #ff5d5d;
+    padding: 12px 20px;
+    border-bottom: 3px solid #000;
+    font-weight: 900;
+    font-size: 1.1rem;
+    color: #000;
+}
+
+/* 彈窗主體內容 */
+.welcome-body {
+    padding: 25px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.welcome-title {
+    font-size: 1.3rem;
+    font-weight: 900;
+    margin: 0;
+    color: #000;
+}
+
+/* 操作說明文字區 */
+.notice-content {
+    background: #f8f9fa;
+    border: 2px solid #000;
+    padding: 16px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    font-weight: bold;
+    color: #222;
+}
+
+/* 帶有粗黑線的客製化核取方塊標籤 */
+.confirm-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 900;
+    font-size: 0.95rem;
+    cursor: pointer;
+    margin-top: 5px;
+    user-select: none;
+}
+
+/* 隱藏原生 checkbox */
+.confirm-checkbox-label input {
+    display: none;
+}
+
+/* 自訂新野獸派方框 Checkbox */
+.custom-checkbox {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #000;
+    background: #fff;
+    display: inline-block;
+    position: relative;
+    transition: background 0.1s;
+}
+
+/* 懸停小反饋 */
+.confirm-checkbox-label:hover .custom-checkbox {
+    background: #eee;
+}
+
+/* 勾選後的狀態：變成亮點青色，並加上小打勾 */
+.confirm-checkbox-label input:checked + .custom-checkbox {
+    background: #00ffcc;
+}
+.confirm-checkbox-label input:checked + .custom-checkbox::after {
+    content: "✓";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-weight: 900;
+    font-size: 0.9rem;
+    color: #000;
+}
+
+/* 底部按鈕區 */
+.welcome-footer {
+    padding: 0 20px 25px 20px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* 進入系統按鈕 */
+.btn-enter {
+    background: #00ffff; /* 亮青色 */
+    color: #000;
+    border: 2px solid #000;
+    padding: 10px 24px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 4px 4px 0px #000;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.btn-enter:hover:not(:disabled) {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0px #000;
+}
+
+.btn-enter:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0px #000;
+}
+
+/* 【關鍵控制】當按鈕被禁用時的暗淡與禁止樣式 */
+.btn-enter:disabled {
+    background: #e0e0e0 !important;
+    color: #999 !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+    transform: none !important;
+    opacity: 0.7;
+}

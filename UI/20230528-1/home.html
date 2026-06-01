@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <link rel="stylesheet" href="home.css">
+    <link rel="stylesheet" href="base.css">
+    <link rel="stylesheet" href="components.css">
+</head>
+<body>
+    <div class="modal-overlay active" id="welcomeModal">
+        <div class="welcome-box">
+            <div class="welcome-header">
+                <span>📢 系統重要提示</span>
+            </div>
+            <div class="welcome-body">
+                <p class="welcome-title">歡迎使用本系統！</p>
+                <div class="notice-content">
+                    以下為本系統的簡略操作說明：<br>
+                    登入後會在系統介紹主頁，<strong>左上角的選單（☰）</strong>有本系統的各種功能，<strong>右上角（👤）</strong>則是個人資料管理及登出處。
+                </div>
+                
+                <label class="confirm-checkbox-label">
+                    <input type="checkbox" id="readConfirmCheck">
+                    <span class="custom-checkbox"></span>
+                    我已詳細閱讀並理解上述操作說明
+                </label>
+            </div>
+            <div class="welcome-footer">
+                <button id="enterSystemBtn" class="btn-enter" disabled>進入系統</button>
+            </div>
+        </div>
+    </div>
+    
+    <header class="top-navbar">
+        <button class="menu-toggle-btn" id="menuToggle">☰</button>
+        
+        <div class="navbar-center-title">LOGO</div>
+
+        <div class="navbar-right-group">
+            <a href="home.html" class="back-to-menu-btn" id="backToMenu">🏠 回到首頁</a>
+
+            <div class="user-menu-container">
+                <div class="user-avatar" id="userIcon">👤</div>
+                <div class="dropdown-menu" id="userDropdown">
+                    <a href="settings.html">設定</a>
+                    <a href="javascript:void(0)" onclick="openLogoutModal()">登出</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <aside class="sidebar-menu" id="sidebarMenu">
+        <div class="sidebar-header">
+            <span class="sidebar-logo">🚀 系統選單</span>
+            <button class="close-sidebar-btn" id="closeSidebar">✕</button>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="home.html" class="sidebar-item active">
+                <span class="sidebar-icon">📋</span> 系統介紹
+            </a>
+            <a href="operation.html" class="sidebar-item">
+                <span class="sidebar-icon">📖</span> 操作說明
+            </a>
+            <a href="record.html" class="sidebar-item">
+                <span class="sidebar-icon">🕒</span> 歷史紀錄
+            </a>
+            <a href="translate.html" class="sidebar-item">
+                <span class="sidebar-icon">🤖</span> AI 智能助理
+            </a>
+        </nav>
+    </aside>
+
+    <main class="content-container">
+        <section class="intro-card">
+            <div class="card-header bg-cyan">
+                <h2>📋 系統介紹</h2>
+            </div>
+            <div class="card-body">
+                <div class="text-content">
+                    <p>本系統是一款專為新世代開發者與文字工作者打造的 <strong>AI 智能翻譯助理工作站</strong>。整合了即時語音錄製、語音轉文字、前端影像即時串流以及多國語言智慧翻譯功能。</p>
+                    <p>透過直覺、硬派的 Neubrutalism 視覺美學，將繁複的語音處理與 AI 互動流程簡化為流暢的單一工作區體驗，大幅提升跨語言協作與紀錄的管理效率。</p>
+                </div>
+                <div class="image-content">
+                    <div class="img-placeholder">
+                        <span>【系統主介面示意圖】</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="intro-card alt-layout">
+            <div class="card-header bg-yellow">
+                <h2>🌐 開發背景</h2>
+            </div>
+            <div class="card-body">
+                <div class="text-content">
+                    <p>在當前全球化與遠端協作的浪潮下，跨國界的視訊會議與即時溝通已成為商務與學術界的日常。然而，現有的視訊工具往往缺乏深度整合的即時翻譯與完整的歷史對話管理。</p>
+                    <p>使用者經常需要在會議軟體、翻譯網站與記事本之間來回切換，不僅分散注意力，更常常漏掉重要的對話細節與影音紀錄，造成資訊斷層。</p>
+                </div>
+                <div class="image-content">
+                    <div class="img-placeholder">
+                        <span>【跨國協作痛點情境圖】</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="intro-card">
+            <div class="card-header bg-purple">
+                <h2>🎯 開發動機</h2>
+            </div>
+            <div class="card-body">
+                <div class="text-content">
+                    <p>我們希望建立一個<strong>「一站式」的無縫工作台</strong>，讓使用者在開啟視訊、與 AI 助理對話的同時，就能即時取得精準的翻譯反饋，並能一鍵錄製語音存檔。</p>
+                    <p>更重要的是，透過強大的歷史紀錄查詢系統，讓每一次的靈感迸發與會議結論都能被安全地留存、隨時可追溯，徹底解決資訊零散的痛點。</p>
+                </div>
+                <div class="image-content">
+                    <div class="img-placeholder">
+                        <span>【一站式整合核心概念圖】</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="intro-card alt-layout">
+            <div class="card-header bg-green">
+                <h2>🚀 特色與創新性</h2>
+            </div>
+            <div class="card-body">
+                <div class="text-content">
+                    <ul>
+                        <li><strong>新野獸派幾何美學：</strong> 擺脫傳統扁平化設計的單調，採用高對比、大膽線條的 Neubrutalism 風格，提供更強烈的視覺反饋。</li>
+                        <li><strong>雙向沉浸式互動：</strong> 結合本機硬體設備（相機、麥克風）控制與 AI 直流對話，翻譯結果即時渲染，氣泡架構俐落清晰。</li>
+                        <li><strong>深度對話查詢檢索：</strong> 具備全內文模糊比對的歷史紀錄看板，搜尋速度極快，兼具高實用性與直覺性。</li>
+                    </ul>
+                </div>
+                <div class="image-content">
+                    <div class="img-placeholder">
+                        <span>【創新特色架構圖】</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="home.js"></script>
+</body>
+</html>

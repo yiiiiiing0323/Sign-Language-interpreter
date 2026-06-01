@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operation</title>
+    <link rel="stylesheet" href="home.css">
+    <link rel="stylesheet" href="base.css">
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="operation.css">
+</head>
+<body>
+    <header class="top-navbar">
+        <button class="menu-toggle-btn" id="menuToggle">☰</button>
+        
+        <div class="navbar-center-title">LOGO</div>
+
+        <div class="navbar-right-group">
+            <a href="home.html" class="back-to-menu-btn" id="backToMenu">🏠 回到首頁</a>
+
+            <div class="user-menu-container">
+                <div class="user-avatar" id="userIcon">👤</div>
+                <div class="dropdown-menu" id="userDropdown">
+                    <a href="settings.html">設定</a>
+                    <a href="javascript:void(0)" onclick="openLogoutModal()">登出</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <aside class="sidebar-menu" id="sidebarMenu">
+        <div class="sidebar-header">
+            <span class="sidebar-logo">🚀 系統選單</span>
+            <button class="close-sidebar-btn" id="closeSidebar">✕</button>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="home.html" class="sidebar-item active">
+                <span class="sidebar-icon">📋</span> 系統介紹
+            </a>
+            <a href="operation.html" class="sidebar-item">
+                <span class="sidebar-icon">📖</span> 操作說明
+            </a>
+            <a href="record.html" class="sidebar-item">
+                <span class="sidebar-icon">🕒</span> 歷史紀錄
+            </a>
+            <a href="translate.html" class="sidebar-item">
+                <span class="sidebar-icon">🤖</span> AI 智能助理
+            </a>
+        </nav>
+    </aside>
+
+    <main class="content-container operation-layout">
+        
+        <aside class="operation-toc">
+            <div class="toc-title">📌 本頁大綱</div>
+            <nav class="toc-nav">
+                <a href="#step1" class="toc-item active">步驟一：開啟助理與權限</a>
+                <a href="#step2" class="toc-item">步驟二：即時語音錄製</a>
+                <a href="#step3" class="toc-item">步驟三：檢視與查詢紀錄</a>
+                <a href="#faq" class="toc-item toc-faq-header">💡 常見問題 FAQ</a>
+            </nav>
+        </aside>
+
+        <section class="operation-main-content">
+            
+            <article id="step1" class="content-section">
+                <h2>01. 開啟 AI 助理與硬體權限</h2>
+                <p>點擊側邊選單的「AI 智能助理」進入工作站。首次進入時，瀏覽器會跳出權限請求提示，請務必點擊<strong>「允許」</strong>以開通視訊相機與麥克風權限。</p>
+                <div class="op-img-box">
+                    <img src="your-image-1.png" alt="開啟權限說明圖" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="img-fallback">📷 【請替換本機圖片：相機與麥克風權限允許示意圖】</div>
+                </div>
+                <div class="tip-box">
+                    <strong>💡 提示：</strong> 若不小心點到拒絕，請點擊網址列左側的「鎖頭」圖示重新開啟權限並重整網頁。
+                </div>
+            </article>
+
+            <hr class="op-hr">
+
+            <article id="step2" class="content-section">
+                <h2>02. 即時語音錄製與訊息發送</h2>
+                <p>在 AI 智能助理分頁中，右側為聊天區，下方提供輸入框。點擊 🎤 按鈕可啟動語音輸入；在輸入框鍵入文字後點擊 ➤ 鍵或直接按下 Enter 即可快速送出訊息給 AI 進行即時翻譯。</p>
+                <div class="op-img-box">
+                    <img src="your-image-2.png" alt="語音發送說明圖" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="img-fallback">🎤 【請替換本機圖片：語音錄製與對話發送操作示意圖】</div>
+                </div>
+            </article>
+
+            <hr class="op-hr">
+
+            <article id="step3" class="content-section">
+                <h2>03. 檢視與查詢歷史紀錄</h2>
+                <p>前往「歷史紀錄」分頁，左側看板提供即時關鍵字查詢功能。輸入關鍵字後，列表會動態篩選出相符的對話標題與內文，點擊項目即可在右側滿版檢視完整的對話氣泡軌跡。</p>
+                <div class="op-img-box">
+                    <img src="your-image-3.png" alt="歷史紀錄說明圖" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="img-fallback">🕒 【請替換本機圖片：歷史紀錄篩選與詳細檢視示意圖】</div>
+                </div>
+            </article>
+
+            <hr class="op-hr">
+
+            <article id="faq" class="content-section">
+                <h2 class="faq-main-title">💡 常見問題 FAQ</h2>
+                
+                <div class="faq-item">
+                    <div class="faq-q">Q1：按下 Enter 鍵沒有發送訊息，而是直接換行？</div>
+                    <div class="faq-a">A：請前往右上角個人頭像選單中的「設定」或導覽列的「設定」按鈕，在偏好設定分頁中確認<strong>「快捷發送訊息」</strong>開關是否已開啟。</div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-q">Q2：歷史紀錄頁面的對話列表為什麼突然擠在中間？</div>
+                    <div class="faq-a">A：此問題已由系統切換優化完成！目前歷史紀錄大卡片內部元件已改為完美的水平拉伸滿版，請放心使用。</div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-q">Q3：錄音完畢後，音訊檔案會存到哪裡？</div>
+                    <div class="faq-a">A：點擊停止錄音 🛑 後，系統會自動將錄音檔包裝為標準 webm 格式，並觸發瀏覽器自訂下載，通常儲存於您本機電腦的「下載 (Downloads)」資料夾中。</div>
+                </div>
+            </article>
+
+        </section>
+    </main>
+
+    <script src="operation.js"></script>
+</body>
+</html>

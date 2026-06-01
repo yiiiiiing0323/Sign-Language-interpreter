@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>忘記密碼</title>
+    <link rel="stylesheet" href="auth.css">
+    <link rel="stylesheet" href="base.css">
+    <link rel="stylesheet" href="components.css">
+</head>
+<body class="auth-body">
+
+    <div class="auth-container">
+        <h1 class="auth-title">找回密碼</h1>
+        <p class="auth-subtitle">請輸入您的電子郵件，我們將向您發送密碼重設連結。</p>
+
+        <form id="forgotForm" onsubmit="handleForgot(event)">
+            <div class="form-group">
+                <label class="form-label" for="forgotEmail">註冊電子郵件</label>
+                <input type="email" id="forgotEmail" class="form-input" placeholder="example@mail.com" required>
+            </div>
+
+            <div id="infoMessage" class="info-msg hidden"></div>
+
+            <button type="submit" class="btn-auth">發送重設連結</button>
+        </form>
+
+        <div class="auth-footer">
+            想起來了？ <a href="login.html" class="auth-link">返回登入頁面</a>
+        </div>
+    </div>
+
+    <script>
+        function handleForgot(e) {
+            e.preventDefault();
+            const email = document.getElementById('forgotEmail').value;
+            const infoDiv = document.getElementById('infoMessage');
+
+            // 模擬發送成功效果
+            infoDiv.textContent = `📩 重設密碼連結已發送至 ${email}，請至信箱查收！`;
+            infoDiv.className = "info-msg success"; // 切換成綠色成功樣式
+            infoDiv.classList.remove('hidden');
+            
+            // 唯讀輸入框防止重複送出
+            document.getElementById('forgotEmail').disabled = true;
+            document.querySelector('.btn-auth').disabled = true;
+            document.querySelector('.btn-auth').style.opacity = '0.6';
+        }
+    </script>
+    <script src="forgetpw.js"></script>
+</body>
+</html>

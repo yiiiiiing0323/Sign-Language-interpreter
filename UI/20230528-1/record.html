@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>歷史紀錄</title>
+    <link rel="stylesheet" href="record.css">
+    <link rel="stylesheet" href="home.css">
+    <link rel="stylesheet" href="base.css">
+    <link rel="stylesheet" href="components.css">
+</head>
+<body>
+    <header class="top-navbar">
+        <button class="menu-toggle-btn" id="menuToggle">☰</button>
+        <div class="navbar-center-title">歷史紀錄</div>
+        
+        <div class="navbar-right-group">
+            <a href="home.html" class="back-to-menu-btn" id="backToMenu">🏠 回到首頁</a>
+            <div class="user-menu-container">
+                <div class="user-avatar" id="userIcon">👤</div>
+                <div class="dropdown-menu" id="userDropdown">
+                    <a href="settings.html">設定</a>
+                    <a href="javascript:void(0)" onclick="openLogoutModal()">登出</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <aside class="sidebar-menu" id="sidebarMenu">
+        <div class="sidebar-header">
+            <span class="sidebar-logo">🚀 系統選單</span>
+            <button class="close-sidebar-btn" id="closeSidebar">✕</button>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="home.html" class="sidebar-item">📋 系統介紹</a>
+            <a href="operation.html" class="sidebar-item">📖 操作說明</a>
+            <a href="record.html" class="sidebar-item active">🕒 歷史紀錄</a>
+            <a href="translate.html" class="sidebar-item">🤖 AI 智能助理</a>
+        </nav>
+    </aside>
+
+
+    <main class="content-container record-layout">
+        
+        <section class="record-sidebar">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="🔍 輸入關鍵字查詢對話...">
+            </div>
+            <div class="record-list" id="recordList">
+                </div>
+        </section>
+
+        <section class="record-main-view">
+            <div class="empty-view" id="emptyView">
+                <div class="empty-icon">💬</div>
+                <p>請從左側點選一筆歷史紀錄以檢視完整對話</p>
+            </div>
+            
+            <div class="chat-detail-panel hidden" id="chatDetailPanel">
+                <div class="detail-header">
+                    <h2 id="detailTitle">對話標題</h2>
+                    <span id="detailTime">2026/05/26 14:32</span>
+                </div>
+                <div class="detail-chat-area" id="detailChatArea">
+                    </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="record.js"></script>
+</body>
+</html>

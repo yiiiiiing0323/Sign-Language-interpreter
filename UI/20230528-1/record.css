@@ -1,0 +1,258 @@
+/* --- 歷史紀錄主雙欄版面 --- */
+.record-layout {
+    display: flex;
+    max-width: 1400px;
+    width: 95%; 
+    height: calc(100vh - 90px); /* 扣掉 header 與上下 margin */
+    margin: 30px auto;
+    border: 3px solid #000;
+    background: #fff;
+    box-shadow: 8px 8px 0px #000;
+    overflow: hidden;
+}
+
+/* --- 左側紀錄清單區 --- */
+.record-sidebar {
+    width: 350px;
+    height: 100%;
+    border-right: 3px solid #000;
+    display: flex;
+    flex-direction: column;
+    background: #f8f9fa;
+    flex-shrink: 0;
+}
+
+/* 搜尋框區塊 */
+.search-box {
+    padding: 15px;
+    border-bottom: 2px solid #000;
+    background: #fff;
+}
+
+#searchInput {
+    width: 100%;
+    border: 2px solid #000;
+    padding: 10px 12px;
+    font-size: 0.95rem;
+    font-weight: bold;
+    border-radius: 6px;
+    outline: none;
+    box-sizing: border-box;
+}
+#searchInput:focus {
+    box-shadow: 3px 3px 0px #00ffff;
+}
+
+/* 列表滾動容器 */
+.record-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* 歷史單一項目卡片 */
+.record-item {
+    background: #fff;
+    border: 2px solid #000;
+    padding: 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.record-item:hover {
+    background: #f0f0f0;
+    transform: translate(-2px, -2px);
+    box-shadow: 3px 3px 0px #000;
+}
+.record-item.active {
+    background: #000;
+    color: #fff;
+    border-color: #000;
+    box-shadow: 3px 3px 0px #00ffff;
+}
+
+.item-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    margin-bottom: 6px;
+    color: #666;
+}
+.record-item.active .item-meta {
+    color: #ccc;
+}
+
+.item-title {
+    font-weight: 900;
+    font-size: 1rem;
+    margin: 0 0 4px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.item-preview {
+    font-size: 0.85rem;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+}
+.record-item.active .item-preview {
+    color: #ddd;
+}
+
+/* --- 右側內容檢視區 --- */
+.record-main-view {
+    flex: 1;
+    height: 100%; /* 關鍵：吃滿大卡片的 100% 高度 */
+    background: #fafafa;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* 預設未選取的空白畫面 */
+.empty-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #888;
+    font-weight: bold;
+}
+.empty-icon {
+    font-size: 4rem;
+    margin-bottom: 15px;
+}
+
+/* 詳情面板結構 */
+.chat-detail-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.detail-header {
+    padding: 20px 25px;
+    border-bottom: 2px solid #000;
+    background: #fff;
+}
+.detail-header h2 {
+    margin: 0 0 5px 0;
+    font-weight: 900;
+    font-size: 1.4rem;
+}
+#detailTime {
+    font-size: 0.8rem;
+    color: #666;
+    font-weight: bold;
+}
+
+/* 歷史對話紀錄氣泡區（延續你在 AI 頁面調好的樣式） */
+.detail-chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 25px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 重複使用你在 AI 頁面優化過的氣泡樣式 */
+.msg-container {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 4px;
+}
+.msg-container.me { align-items: flex-end; }
+.msg-container.ai { align-items: flex-start; }
+
+.msg-username {
+    font-size: 0.75rem;
+    color: #666;
+    margin-bottom: 3px;
+    font-weight: bold;
+}
+
+.bubble {
+    max-width: 70%;
+    padding: 10px 16px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    word-break: break-all;
+    white-space: pre-wrap;
+    margin: 0 !important;
+    line-height: 1.3;
+}
+
+.me .bubble {
+    background-color: #007bff;
+    color: #fff;
+    border-top-right-radius: 2px;
+}
+
+.ai .bubble {
+    background-color: #fff;
+    color: #000;
+    border: 2px solid #000;
+    border-top-left-radius: 2px;
+}
+
+.hidden { display: none !important; }
+
+/* =========================================================================
+   最終校正：解除 home.css 對歷史紀錄頁面的 Flex 干擾
+   ========================================================================= */
+
+/* 1. 強制把被 home.css 改成垂直置中的容器，修正回正常的滿版區塊 */
+main.content-container.record-layout {
+    display: flex !important;           /* 確保一定是水平並排（左欄+右欄） */
+    flex-direction: row !important;     /* 強制改回左右排列，不允許首頁的 column 干擾 */
+    align-items: stretch !important;    /* 讓左右兩欄垂直拉滿大卡片 */
+    justify-content: flex-start !important; /* 從左到右正常排列 */
+    
+    max-width: 1400px !important;       /* 維持大卡片的最大寬度 */
+    width: 95% !important;              /* 幫左右兩側留一圈漂亮的呼吸空間 */
+    height: calc(100vh - 100px) !important; /* 鎖定卡片高度 */
+    margin: 20px auto !important;       /* 靠這個水平置中 */
+    
+    border: 3px solid #000 !important;
+    background: #fff !important;
+    box-shadow: 8px 8px 0px #000 !important; /* 找回帥氣的粗黑陰影 */
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+}
+
+/* 2. 鎖定左側搜尋與列表的寬度，絕對不准它被擠壓變形 */
+.record-sidebar {
+    width: 380px !important;            /* 稍微加寬搜尋清單，閱讀更舒適 */
+    height: 100% !important;            /* 上下完美貼齊卡片 */
+    border-right: 3px solid #000 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: #f8f9fa !important;
+    flex-shrink: 0 !important;          /* 關鍵：強制死守寬度，不准變形 */
+    box-sizing: border-box !important;
+}
+
+/* 3. 讓右側的對話聊天區塊自然吃掉所有剩餘的右邊空間 */
+.record-main-view {
+    flex: 1 !important;
+    height: 100% !important;            /* 上下完美貼齊卡片 */
+    background: #fafafa !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    box-sizing: border-box !important;
+}
+
+/* 4. 確保裡面的列表和聊天區域可以獨立正常滾動 */
+.record-list, .detail-chat-area {
+    flex: 1 !important;
+    overflow-y: auto !important;        /* 當對話很多時，只在內部產生滾動條 */
+}

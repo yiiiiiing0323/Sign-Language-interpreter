@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Workspace Pro</title>
+    <link rel="stylesheet" href="translate.css">
+</head>
+<body class="meet-page">
+
+    <header class="top-nav">
+        <div class="nav-left">
+            <span id="currentDateTime">2026/04/30 12:00:00</span>
+        </div>
+        <div class="nav-right">
+            <button class="nav-btn" id="settingsBtn">⚙️ 設定</button>
+            <button class="nav-btn exit" id="exitBtn">🚪 退出</button>
+        </div>
+    </header>
+
+    <main class="meeting-container">
+        <section class="tile section-me">
+            <div class="video-container" id="videoBox">
+                <video id="selfVideo" autoplay muted playsinline class="video-content"></video>
+                <div id="selfAvatar" class="avatar-placeholder">我</div>
+            </div>
+            <div class="local-controls">
+                <button class="ctrl" id="recordBtn">🎤</button>
+                <button class="ctrl" id="camBtn">📹</button>
+            </div>
+            <div id="recordStatus" class="status-dot"></div>
+        </section>
+
+        <section class="tile section-ai">
+            <div class="video-container">
+                <div class="avatar-placeholder">AI</div>
+            </div>
+        </section>
+
+        <section class="tile section-chat" id="chatPanel">
+            <div class="chat-header">
+                <span>翻譯與訊息</span>
+                <button id="toggleChat">◀ 收起</button>
+            </div>
+            
+            <div class="chat-area" id="chatArea"></div>
+
+            <div class="chat-input-wrapper">
+                <textarea id="chatInput" placeholder="輸入訊息..." rows="1"></textarea>
+                <button class="send-btn" id="sendBtn">➤</button>
+            </div>
+        </section>
+
+        <button id="expandChat" class="expand-btn hidden">展開訊息 ▶</button>
+    </main>
+    <div class="modal-overlay" id="settingsModal">
+        <div class="settings-box">
+            <aside class="settings-sidebar">
+                <div class="sidebar-title">系統設定</div>
+                <button class="sidebar-item active">⚙️ 偏好設定</button>
+                <button class="sidebar-item" disabled style="opacity: 0.5; cursor: not-allowed;">👤 個人資料 (開發中)</button>
+                <button class="sidebar-item" disabled style="opacity: 0.5; cursor: not-allowed;">🔒 安全與隱私 (開發中)</button>
+            </aside>
+
+            <main class="settings-main">
+                <section class="settings-section">
+                    <h2>偏好設定</h2>
+                    <p class="section-desc">調整您的操作習慣與訊息發送方式。</p>
+                    
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <span class="setting-label">快捷發送訊息</span>
+                            <span class="setting-hint">開啟後，按下 Enter 鍵將直接發送訊息，使用 Shift + Enter 換行。</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="enterToSendSetting" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </section>
+
+                <footer class="settings-footer">
+                    <button id="closeSettings" class="save-btn">儲存並關閉</button>
+                </footer>
+            </main>
+        </div>
+    </div>
+
+    <script src="translate.js"></script>
+</body>
+</html>
