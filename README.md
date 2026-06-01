@@ -1,6 +1,6 @@
 # Sign-Language-interpreter
 
-![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue)
+![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue)
 ![Framework: PyTorch](https://img.shields.io/badge/Framework-PyTorch-orange)
 ![Frontend: Three.js](https://img.shields.io/badge/Frontend-Three.js-green)
 ![Status: In-Development](https://img.shields.io/badge/Status-In--Development-yellow)
