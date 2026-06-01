@@ -205,14 +205,26 @@ python realtime_demo.py          # 載入訓練權重進行相機即時辨識測
 ### 後端 B 流（幾何邏輯辨識端）獨立實驗步驟
 B 流核心採用專家幾何規則匹配與時序狀態機管線，跳過深度學習模型的訓練成本，直接將 database.xlsx 內的 MediaPipe 3D 拓樸座標閾值鏈轉譯為即時判定結果。
 
-#### 1. 規則資料庫動態配置
+#### 1. 前置作業：環境與套件確認
+進行 B 流的獨立實驗前，請確保您已切換至專案專屬的 Conda 虛擬環境（Python 3.9.25），並已安裝核心資料處理與視覺套件。
+
+```bash
+# 1. 啟動環境(third請改為自己的虛擬環境名稱)
+conda activate third
+
+# 2. 確認 B 流所需之核心依賴已安裝 (特別是 pandas 與 openpyxl 負責解析 Excel)
+pip install pandas==2.3.3 openpyxl==3.1.5 mediapipe==0.10.14 numpy==1.26.4
+```
+(註：強烈建議將 numpy 鎖定在 1.26.4，以避免 Numpy 2.x 版本帶來的底層相容性錯誤。)
+
+#### 2. 規則資料庫動態配置
 B流的辨識規則完全由 database.xlsx 的 工作表3 進行管理。若需新增或修改手勢幾何邏輯，請直接編輯該 Excel 檔的 「MediaPipe 關鍵特徵」 欄位。
 
 -- 一般靜態手勢：使用布林與比較運算子連結特徵變數（如：is_flat_HAND and dist_HAND_8_FACE_1 < 0.5）。
 
 -- 動態連續手勢：使用時序語法結構定義多步驟動態軌跡（如：sequence([步驟1邏輯], [步驟2邏輯])）。
 
-#### 2. 獨立語法檢查與安全規則評估測試
+#### 3. 獨立語法檢查與安全規則評估測試
 為了防止外部惡意修改 Excel 注入危險代碼，系統內建基於 AST（抽象語法樹）的 SafeRuleEvaluator 安全解析引擎，不使用危險的 eval()。可執行以下獨立指令進行核心邏輯與安全性測試：
 ```bash
 # 1. 驗證 B 流獨立模組與依賴環境之語法正確性
@@ -226,7 +238,8 @@ python -c "from core.safe_rule_engine import SafeRuleEvaluator; ev=SafeRuleEvalu
 python -c "from core.safe_rule_engine import SafeRuleEvaluator; ev=SafeRuleEvaluator(); print(ev.evaluate('danger()', {}))"
 # 預期輸出：明確顯示不支援「Call」或禁止執行任意 Python 程式碼之警告
 ```
-#### 3. B 流即時判定與 3 幀穩定器測試
+
+#### 4. B 流即時判定與 3 幀穩定器測試
 B 流內建 required_stable_frames = 3 的防抖動防誤判機制。若要對 B 流進行獨立的即時影像流測試，可直接查閱日誌或運行封裝測試：
 ```bash
 # 查看 B 流系統初始化與專家規則載入狀態
@@ -234,6 +247,7 @@ python -c "from b_stream import BStreamGestureMatcher; matcher = BStreamGestureM
 
 # 於執行 main.py 時，每 30 幀可在終點端查閱「📦 [給B流的特徵]」實時動態特徵張量日誌
 ```
+
 ### 雲端 LLM（語意校正翻譯端）獨立實驗步驟
 LLM 翻譯端專職負責非同步手語語序重組、混淆詞上下文去歧義，以及網路異常時的自動多模型容錯轉移（Failover Routing）。
 
