@@ -155,48 +155,49 @@ Sign-Language-interpreter/
 │   └── model_rigging.blend     # 包含 VRM 標準化虛擬人骨架的 Blender 專案檔
 │
 ├── UI/        # 3D 虛擬人動畫重定向與綁定模組
-|   ├── 20260528-1/
-|   │   ├── auth.css     # "登入頁面" 美化模組樣式
-|   │   ├── base.css     # 網頁架構元件 美化模組樣式
-|   │   ├── components.css     # 網頁共同元件 美化模組樣式
-|   │   ├── forgetpw.js     # "忘記密碼" 網頁互動觸發程式
-|   │   ├── forgetpw.html    # "忘記密碼" 網頁架構格式
-|   │   ├── home.css     # "主頁" 美化模組樣式
-|   │   ├── home.js     # "主頁" 網頁互動觸發程式
-|   │   ├── home.html     # "主頁" 網頁架構格式
-|   │   ├── index.html     # "初始頁(未登入)" 網頁架構格式
-|   │   ├── index.css     # "初始頁(未登入)" 美化模組樣式
-|   │   ├── login.css     # "欲登入" 美化模組樣式
-|   │   ├── login.js     # "欲登入" 網頁互動觸發程式
-|   │   ├── login.html     # "欲登入" 網頁架構格式
-|   │   ├── operation.css     # "操作說明" 美化模組樣式
-|   │   ├── operation.js     # "操作說明" 網頁互動觸發程式
-|   │   ├── operation.html     # "操作說明" 網頁架構格式
-|   │   ├── record.css     # "歷史紀錄" 美化模組樣式
-|   │   ├── record.js     # "歷史紀錄" 網頁互動觸發程式
-|   │   ├── record.html     # "歷史紀錄" 網頁架構格式
-|   │   ├── register.html     # "註冊帳號" 網頁架構格式
-|   │   ├── register.css     # "註冊帳號" 美化模組樣式
-|   │   ├── settings.css     # "網站設定" 美化模組樣式
-|   │   ├── settings.js     # "網站設定" 網頁互動觸發程式
-|   │   ├── settings.html     # "網站設定" 網頁架構格式
-|   │   ├── translate.css     # "AI 智能助理" 美化模組樣式
-|   │   ├── translate.js     # "AI 智能助理" 網頁互動觸發程式
-|   │   ├── translate.html     # "AI 智能助理" 網頁架構格式
-|   │   ├── operation pic/ #操作說明頁所需要的操作截圖
-|   │   │   ├── 1.png
-|   │   │   ├── 2.png
-|   │   │   ├── 2-1.png
-|   │   │   ├── 2-2.png
-|   │   │   ├── 3.png
-|   │   │   ├── 4.png
-|   │   │   ├── 4-1.png
-|   │   │   ├── 4-1-1.png     
-|   │   │   ├── 4-2.png        
+|   └── 20260528-1/
+|       ├── auth.css     # "登入頁面" 美化模組樣式
+|       ├── base.css     # 網頁架構元件 美化模組樣式
+|       ├── components.css     # 網頁共同元件 美化模組樣式
+|       ├── forgetpw.js     # "忘記密碼" 網頁互動觸發程式
+|       ├── forgetpw.html    # "忘記密碼" 網頁架構格式
+|       ├── home.css     # "主頁" 美化模組樣式
+|       ├── home.js     # "主頁" 網頁互動觸發程式
+|       ├── home.html     # "主頁" 網頁架構格式
+|       ├── index.html     # "初始頁(未登入)" 網頁架構格式
+|       ├── index.css     # "初始頁(未登入)" 美化模組樣式
+|       ├── login.css     # "欲登入" 美化模組樣式
+|       ├── login.js     # "欲登入" 網頁互動觸發程式
+|       ├── login.html     # "欲登入" 網頁架構格式
+|       ├── operation.css     # "操作說明" 美化模組樣式
+|       ├── operation.js     # "操作說明" 網頁互動觸發程式
+|       ├── operation.html     # "操作說明" 網頁架構格式
+|       ├── record.css     # "歷史紀錄" 美化模組樣式
+|       ├── record.js     # "歷史紀錄" 網頁互動觸發程式
+|       ├── record.html     # "歷史紀錄" 網頁架構格式
+|       ├── register.html     # "註冊帳號" 網頁架構格式
+|       ├── register.css     # "註冊帳號" 美化模組樣式
+|       ├── settings.css     # "網站設定" 美化模組樣式
+|       ├── settings.js     # "網站設定" 網頁互動觸發程式
+|       ├── settings.html     # "網站設定" 網頁架構格式
+|       ├── translate.css     # "AI 智能助理" 美化模組樣式
+|       ├── translate.js     # "AI 智能助理" 網頁互動觸發程式
+|       ├── translate.html     # "AI 智能助理" 網頁架構格式
+|       └── operation pic/ #操作說明頁所需要的操作截圖
+|           ├── 1.png
+|           ├── 2.png
+|           ├── 2-1.png
+|           ├── 2-2.png
+|           ├── 3.png
+|           ├── 4.png
+|           ├── 4-1.png
+|           ├── 4-1-1.png     
+|           └── 4-2.png        
 │
-├── 專題設計規格書.pdf
-├── 期中專題簡報.pdf
-├── 期末專題簡報.pdf
+├── document/
+│   ├── 專題設計規格書.pdf
+│   ├── 期中專題簡報.pdf
+│   └── 期末專題簡報.pdf
 ├── LICENSE
 └── README.md
 ```
@@ -398,7 +399,7 @@ for m in ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest']:
 4. 推動科技助殘與社會共融：透過技術手段消除溝通門檻，提升多樣化服務情境下的友善度與品質。
 
 ## 👥 開發團隊與分工 (Authors)
-李宜穎 — 負責 sign_language_ai/：A 流 AI 深度學習辨識端設計，包含 LSTM / GRU / Transformer 模型架構搭建、資料預處理與時序詞彙量擴大。
+李宜穎 — 負責 A 流 AI 深度學習辨識端設計，包含 LSTM / GRU / Transformer 模型架構搭建、資料預處理與時序詞彙量擴大。
 
 周語旋 — 負責 B 流（幾何特徵規則辨識演算法研發）與後端 LLM 大型語言模型語意重組引擎整合。
 
