@@ -5,7 +5,7 @@
 ![Frontend: Three.js](https://img.shields.io/badge/Frontend-Three.js-green)
 ![Status: In-Development](https://img.shields.io/badge/Status-In--Development-yellow)
 
-[三下期末報告影片]((https://drive.google.com/file/d/1GofrD0zfCPDhS8rKh7rqyqgFy-iRNPvg/view?usp=sharing))
+[三下期末報告影片](https://drive.google.com/file/d/1GofrD0zfCPDhS8rKh7rqyqgFy-iRNPvg/view?usp=sharing)
 
 
 本系統旨在提供**台灣手語 (TSL)** 與**中文（文字/語音）**之間的即時雙向翻譯，促進聽障人士與一般人士在日常生活中的溝通。
