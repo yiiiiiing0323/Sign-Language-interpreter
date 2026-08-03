@@ -1,7 +1,11 @@
-print("[追蹤雷達] 1. 成功讀取檔案，開始執行...")
-
 import sys
 sys.dont_write_bytecode = True
+
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
+
+print("[追蹤雷達] 1. 成功讀取檔案，開始執行...")
 
 import cv2
 import numpy as np
@@ -12,10 +16,12 @@ from PIL import Image, ImageDraw, ImageFont
 import threading  
 import requests   
 import os
+import hashlib
 from dotenv import load_dotenv
 
-from core.feature_registry import AI_TENSOR_DIM
+from core.feature_registry import AI_TENSOR_DIM, AI_TENSOR_LAYOUT_VERSION
 from core.logging_config import get_logger, setup_logging
+from core.word_normalization import normalize_output_word
 
 # ========================================
 # ⭐ 新增：PyTorch 與融合模組
@@ -34,14 +40,14 @@ try:
     from b_stream import BStreamGestureMatcher
     print("[追蹤雷達] 4. 成功找到 a_stream 與 b_stream 模組...")
 except ImportError:
-    print("⚠️ 找不到 b_stream_matcher.py，程式可能無法完整運作。")
+    print("⚠️ 找不到 b_stream.py，程式可能無法完整運作。")
 
 # ⭐ 新增：匯入融合模組
 from fusion import DecisionFusion
+from compound_phrase import CompoundPhraseResolver
 
 logger = get_logger(__name__)
 perf_logger = get_logger("performance")
-
 
 def resource_path(relative_path):
     """
@@ -143,8 +149,11 @@ class TranslationWorker:
     def __init__(self, api_key, use_real_api=False):
         self.use_real_api = use_real_api
         self.api_key = api_key
-        self.word_buffer = []      
-        self.final_sentence = ""   
+        self.word_buffer = []
+        # 跟 word_buffer 一一對應，但保留 _A/_B/_N/_S 尾碼，只給複合詞比對用。
+        # word_buffer 本身維持乾淨（顯示、送 Gemini 用），不受這個影響。
+        self.raw_word_buffer = []
+        self.final_sentence = ""
         self.is_translating = False
         self.last_word_time = time.time()
         self.last_added_word = ""  
@@ -156,9 +165,15 @@ class TranslationWorker:
         self.translation_done_time = 0 
 
         self.system_instruction = """
-        你是一個專業的台灣手語(TSL)翻譯員。
-        使用者會輸入一連串的手語單字（Glosses），請你根據台灣手語的文法習慣，
-        將它們重組、潤飾成一句自然、通順的繁體中文日常用語。
+        你是一個專業的台灣手語(TSL)翻譯員，負責將一連串辨識出的手語單字（Glosses）重組並潤飾成一句自然、通順的繁體中文日常用語。
+
+        【核心任務與雜訊過濾規則】
+        1. 容錯與去重防禦：輸入是由影像辨識即時產生的，可能包含短時間內的「重複跳動」或「無意義雜訊字」（例如：["跑", "腳踏車", "物", "腳踏車"]）。你必須自動過濾重複詞、去除無意義的贅字（如「物」），將其平滑化。
+        2. 語序調整：手語常將時間副詞放句首、動詞放句尾。請依中文習慣調整成最自然的語序。
+        3. 複合詞融合：若遇到手語特有的固定複合詞（即使前端未完全融合），請合成最正確的中文。
+        4. 混淆詞與候選詞：若出現方括號或斜線的候選詞（如 [A/B]），請根據上下文「只挑選最適合的一個」，絕對不要保留括號與斜線。
+        5. 邊界條件：若輸入語意極不完整，仍請輸出最自然的短句，不要拒絕回答，也不要自行腦補過多不存在的背景資訊。
+        6. 輸出限制：只輸出翻譯後的繁體中文句子與必要標點符號。絕對不要輸出任何解釋、分析、原始 Gloss 或引言。
 
         【翻譯規則與範例】
         1. 手語常將時間副詞放句首，請調整至自然位置。
@@ -178,7 +193,7 @@ class TranslationWorker:
            - 輸入：["爸爸", "弟弟", "太太"] -> 輸出：嬸嬸。
            - 輸入：["結婚", "女生"] -> 輸出：太太。
         
-        # ⭐ 新增：混淆詞判斷規則
+        # 混淆詞判斷規則
         6. 當遇到用方括號標記的混淆詞（如：[先生/謝謝]），請根據上下文選擇：
            - 輸入：["你好", "[先生/謝謝]"] -> 輸出：你好，先生。
            - 輸入：["幫忙", "我", "[先生/謝謝]"] -> 輸出：謝謝你幫我。
@@ -187,14 +202,34 @@ class TranslationWorker:
         請直接輸出翻譯後的句子，絕對不要輸出任何解釋、引言或標點符號之外的廢話。
         """
 
-    def add_word(self, word):
-        clean_word = word.split('_')[0] if '_' in word else word
+    def add_word(self, word, raw_word=None):
+        if word is None:
+            return
+        clean_word = str(word).strip()
+        if not clean_word:
+            return
         if clean_word != self.last_added_word or (time.time() - self.last_word_time > self.debounce_time):
             self.word_buffer.append(clean_word)
+            self.raw_word_buffer.append(str(raw_word).strip() if raw_word else clean_word)
             self.last_added_word = clean_word
             self.last_word_time = time.time()
-            self.final_sentence = "" 
+            self.final_sentence = ""
             print(f"[翻譯雷達] 目前收集單字: {self.word_buffer}")
+
+    #6/24
+    def replace_tail_words(self, consumed_count, merged_word, raw_word=None, now=None):
+        if consumed_count > 0:
+            self.word_buffer = self.word_buffer[:-consumed_count]
+            self.raw_word_buffer = self.raw_word_buffer[:-consumed_count]
+
+        if merged_word is None:
+            return
+        clean_word = str(merged_word).strip()
+        self.word_buffer.append(clean_word)
+        self.raw_word_buffer.append(str(raw_word).strip() if raw_word else clean_word)
+        self.last_added_word = clean_word
+        self.last_word_time = now if now is not None else time.time()
+        self.final_sentence = ""
 
     def _call_llm(self, words_to_translate):
         self.is_translating = True
@@ -285,9 +320,10 @@ class TranslationWorker:
             no_hands_trigger = (not hands_present) and (time.time() - self.last_hands_seen_time > self.translate_delay)
             timeout_trigger = (time.time() - self.last_word_time > 5.0)
 
-            if no_hands_trigger or timeout_trigger: 
-                words_to_translate = list(self.word_buffer) 
+            if no_hands_trigger or timeout_trigger:
+                words_to_translate = list(self.word_buffer)
                 self.word_buffer.clear()
+                self.raw_word_buffer.clear()
                 threading.Thread(target=self._call_llm, args=(words_to_translate,), daemon=True).start()
 
 # ==========================================
@@ -310,8 +346,12 @@ def main():
     try:
         # label_map.json 可能有 43 個「手型標籤」。
         # 若模型輸出只有 41 類，下面會自動把 _A / _B 後綴合併成同一個最終詞。
-        with open(resource_path("label_map.json"), "r", encoding="utf-8") as f:
+        label_map_path = resource_path("label_map.json")
+        with open(label_map_path, "r", encoding="utf-8") as f:
             raw_idx2label = {int(k): v for k, v in json.load(f).items()}
+
+        with open(resource_path("model_contract.json"), "r", encoding="utf-8") as f:
+            model_contract = json.load(f)
         
         device = "cuda" if torch.cuda.is_available() else "cpu"
         TOTAL_DIM = AI_TENSOR_DIM
@@ -319,6 +359,23 @@ def main():
 
         state_dict = torch.load(resource_path("sign_lstm.pth"), map_location=device)
         model_class_count = state_dict["fc.weight"].shape[0]
+
+        with open(label_map_path, "rb") as f:
+            label_map_hash = hashlib.sha256(f.read()).hexdigest()
+        contract_checks = {
+            "input_dim": TOTAL_DIM,
+            "sequence_length": SEQ_LEN,
+            "class_count": model_class_count,
+            "tensor_layout": AI_TENSOR_LAYOUT_VERSION,
+            "label_map_sha256": label_map_hash,
+        }
+        mismatches = {
+            key: (model_contract.get(key), actual)
+            for key, actual in contract_checks.items()
+            if model_contract.get(key) != actual
+        }
+        if mismatches:
+            raise ValueError(f"模型契約不一致: {mismatches}")
 
         clean_labels = []
         for i in sorted(raw_idx2label):
@@ -369,13 +426,30 @@ def main():
     # 初始化模組
     # ========================================
     a_stream_extractor = AStreamFeatureExtractor()
+
+    # ========================================
+    # 初始化模組
+    # ========================================
+    print("[追蹤雷達] 5-A. 開始初始化 BStreamGestureMatcher...")
     b_stream_matcher = BStreamGestureMatcher(excel_path=resource_path("database.xlsx"))
+    print("[追蹤雷達] 5-B. BStreamGestureMatcher 初始化成功！")
     
     # ⭐ 新增：決策融合器
+    print("[追蹤雷達] 5-C. 開始初始化 DecisionFusion...")
     decision_fusion = DecisionFusion()
+    
+    print("[追蹤雷達] 5-D. 開始初始化 CompoundPhraseResolver...")
+    compound_resolver = CompoundPhraseResolver(
+        resource_path("database.xlsx"),
+        sheet_name="工作表3",
+        source_col="Unnamed: 0",
+        output_col="中文",
+    )
+    print("[追蹤雷達] 5-E. CompoundPhraseResolver 初始化成功！")
 
     try:
-        df = pd.read_excel(resource_path("database.xlsx"))
+        print("[追蹤雷達] 5-F. 嘗試執行 Excel X光機 讀取...")
+        df = pd.read_excel(resource_path("database.xlsx"), sheet_name="工作表3")
         print("\n" + "="*50)
         print("🔍 [Excel X光機] 檢查 B 流讀取到的規則：")
         for idx, row in df.iterrows():
@@ -385,6 +459,7 @@ def main():
                 print(f"👉 單字: {word}")
                 print(f"   真實條件: [{condition}]")
         print("="*50 + "\n")
+        print("[追蹤雷達] 5-G. Excel X光機 執行完畢！")
     except Exception as e:
         print(f"⚠️ 無法啟動 Excel X光機: {e}")
 
@@ -401,7 +476,7 @@ def main():
     face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)  # ⭐ 新增
     logger.info("MediaPipe 視覺引擎初始化完成")
     
-    translator = TranslationWorker(api_key=api_key, use_real_api=False)
+    translator = TranslationWorker(api_key=api_key, use_real_api=True)
 
     # API 驗證（保持不變）
     def _verify_api():
@@ -424,7 +499,7 @@ def main():
             except Exception as e:
                 print(f"  ❌ [{m}] 連線失敗: {e}")
         print("🔍 [LLM 驗證] 完成\n")
-    threading.Thread(target=_verify_api, daemon=True).start()
+    
 
     cap, camera_index, camera_backend = open_camera()
     if cap is None:
@@ -435,6 +510,7 @@ def main():
         print(f"🚨 {message}")
         logger.error(message)
         return
+    threading.Thread(target=_verify_api, daemon=True).start()
 
     cv2.namedWindow('Gesture Recognition Core', cv2.WINDOW_NORMAL)
 
@@ -481,12 +557,18 @@ def main():
 
             # 畫骨架
             hands_present = False
-            if pose_results.pose_landmarks:
+            pose_present = bool(pose_results and pose_results.pose_landmarks)
+            if pose_present:
                 mp_drawing.draw_landmarks(frame, pose_results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             if hand_results.multi_hand_landmarks:
                 hands_present = True
                 for hand_landmarks in hand_results.multi_hand_landmarks:
                     mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            tracking_ready = bool(
+                hands_present
+                and pose_present
+                and hand_results.multi_handedness
+            )
 
             # ========================================
             # ⭐ A流：提取特徵（修改為回傳兩個值）
@@ -513,7 +595,7 @@ def main():
             # ⭐ A流：LSTM 預測（新增）
             # ========================================
             ai_result = None
-            if lstm_enabled and hand_results and hand_results.multi_hand_landmarks:
+            if lstm_enabled and tracking_ready:
                 sequence_buffer.append(ai_tensor)
                 
                 if len(sequence_buffer) == SEQ_LEN:
@@ -533,40 +615,49 @@ def main():
                         
                         if top_k_probs[0].item() > 0.65:
                             ai_result = (idx2label[top_k_indices[0].item()], top_k_probs[0].item())
-                        
-                        # 檢查混淆詞
-                        confusable_candidates = []
-                        for word, conf in ai_top_k_results:
-                            if conf >= top_k_probs[0].item() * 0.85:
-                                if decision_fusion.get_confusable_words(word):
-                                    confusable_candidates.append((word, conf))
-                        
-                        if len(confusable_candidates) >= 2:
-                            words = [w for w, c in confusable_candidates]
-                            first_word = words[0]
-                            group = decision_fusion.get_confusable_words(first_word)
-                            
-                            same_group_words = [w for w in words if w in group]
-                            
-                            if len(same_group_words) >= 2:
-                                merged_word = decision_fusion.merge_confusable_words(same_group_words)
-                                max_conf = max(c for w, c in confusable_candidates if w in same_group_words)
-                                ai_result = (merged_word, max_conf)
-                                print(f"🔀 偵測到混淆詞: {same_group_words} → {merged_word}")
+
+                            # 檢查混淆詞：只在最高分已經過 0.65 門檻時才嘗試合併，
+                            # 避免低信心的雜訊幀單純因為候選分數彼此接近，就繞過門檻產生看似篤定的合併結果。
+                            confusable_candidates = []
+                            for word, conf in ai_top_k_results:
+                                if conf >= top_k_probs[0].item() * 0.85:
+                                    if decision_fusion.get_confusable_words(word):
+                                        confusable_candidates.append((word, conf))
+
+                            if len(confusable_candidates) >= 2:
+                                words = [w for w, c in confusable_candidates]
+                                first_word = words[0]
+                                group = decision_fusion.get_confusable_words(first_word)
+
+                                same_group_words = [w for w in words if w in group]
+
+                                if len(same_group_words) >= 2:
+                                    merged_word = decision_fusion.merge_confusable_words(same_group_words)
+                                    max_conf = max(c for w, c in confusable_candidates if w in same_group_words)
+                                    ai_result = (merged_word, max_conf)
+                                    print(f"🔀 偵測到混淆詞: {same_group_words} → {merged_word}")
             
-            elif not hands_present and lstm_enabled:
+            elif lstm_enabled:
                 sequence_buffer.clear()
 
             # ========================================
             # ⭐ B流：邏輯判斷
             # ========================================
-            logic_result = b_stream_matcher.evaluate_frame_with_confidence(current_features)
+            if tracking_ready:
+                logic_result = b_stream_matcher.evaluate_frame_with_confidence(current_features)
+            else:
+                b_stream_matcher.reset_transient_state()
+                logic_result = None
             gesture_name = logic_result[0] if logic_result else None
 
             # ========================================
             # ⭐ 決策融合（新增）
             # ========================================
-            final_word, source = decision_fusion.fuse(ai_result, logic_result)
+            final_word, source = decision_fusion.fuse(
+                ai_result,
+                logic_result,
+                logic_kind=b_stream_matcher.last_match_kind,
+            )
             final_confidence = decision_fusion.last_confidence
             
             # ========================================
@@ -576,7 +667,20 @@ def main():
             
             if final_word:
                 if final_word != last_word or (current_time - last_word_time) > WORD_COOLDOWN:
-                    translator.add_word(final_word)
+                    translator.add_word(final_word, raw_word=decision_fusion.last_raw_word)
+                    while True:
+                        # 用保留 _A/_B/_N/_S 尾碼的 raw_word_buffer 比對，
+                        # 這樣「要_N/要_S」「家_A/家_B」這類語意不同的變體才不會被互相蓋掉。
+                        compound_match = compound_resolver.resolve_tail(translator.raw_word_buffer)
+                        if not compound_match:
+                            break
+                        translator.replace_tail_words(
+                            compound_match.consumed,
+                            normalize_output_word(compound_match.output),
+                            raw_word=compound_match.output,
+                            now=current_time,
+                        )
+                        print(f"[複合詞] {'+'.join(compound_match.pattern)} -> {compound_match.output}")
                     last_word = final_word
                     last_word_time = current_time
                     print(f"✅ 新增詞彙: {final_word} (來源: {source})")
@@ -594,7 +698,7 @@ def main():
                 fps = (frame_count - last_perf_frame_count) / elapsed
                 frame_ms = (time.perf_counter() - frame_start_time) * 1000
                 perf_logger.info(
-                    "fps=%.2f frame_ms=%.2f hands=%s ai=%s logic=%s final=%s confidence=%.3f",
+                    "fps=%.2f frame_ms=%.2f hands=%s ai=%s logic=%s final=%s confidence=%.3f b_candidates=%s b_suppressed=%s",
                     fps,
                     frame_ms,
                     hands_present,
@@ -602,6 +706,8 @@ def main():
                     logic_result,
                     final_word,
                     final_confidence,
+                    b_stream_matcher.last_candidate_words,
+                    b_stream_matcher.last_suppressed_words,
                 )
                 last_perf_log_time = current_time
                 last_perf_frame_count = frame_count

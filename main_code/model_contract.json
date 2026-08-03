@@ -1,0 +1,7 @@
+{
+  "input_dim": 218,
+  "sequence_length": 30,
+  "class_count": 111,
+  "tensor_layout": "face24-left63-right63-left_angles15-right_angles15-pose30-elbows2-motion6-v1",
+  "label_map_sha256": "d48f7eb75302215413d891522576ded7b38fd19b25258a5c1cf60722f5e82cfc"
+}

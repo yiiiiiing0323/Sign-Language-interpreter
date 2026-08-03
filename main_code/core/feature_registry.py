@@ -169,3 +169,4 @@ class FeatureRegistry:
 
 FEATURE_REGISTRY = FeatureRegistry()
 AI_TENSOR_DIM = FEATURE_REGISTRY.tensor_dim
+AI_TENSOR_LAYOUT_VERSION = "face24-left63-right63-left_angles15-right_angles15-pose30-elbows2-motion6-v1"

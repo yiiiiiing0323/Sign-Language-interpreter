@@ -80,7 +80,14 @@ class SafeRuleEvaluator:
         normalized = self._normalize(expression)
         try:
             tree = ast.parse(normalized, mode="eval")
-            return self._eval_node(tree.body, variables)
+            result = self._eval_node(tree.body, variables)
+            # Missing values must fail closed. Treating an unknown distance as
+            # False would make expressions such as "dist_typo < 0.15" true.
+            if result.unknown_names:
+                result.matched = False
+                result.confidence = 0.0
+                result.matched_terms = 0
+            return result
         except SyntaxError as exc:
             return RuleEvaluation(False, error=f"syntax error: {exc.msg}")
         except ValueError as exc:
