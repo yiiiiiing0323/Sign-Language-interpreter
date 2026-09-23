@@ -241,6 +241,9 @@ class AStreamFeatureExtractor:
             'vector_align_HAND_8_CAMERA_AXIS': 0.0,
             'vector_align_RIGHT_HAND_8_CAMERA_AXIS': 0.0,
             'vector_align_HAND_8_SIDE_AXIS': 0.0,
+            # 食指在影像中的有號水平分量；正值代表朝畫面右側，
+            # 供「他們／他兩」區分「你們／你倆」的右前方指向。
+            'vector_align_HAND_8_RIGHT_AXIS': 0.0,
             'vector_align_HAND_8_DOWN_AXIS': 0.0, 
             'is_right_front_HAND_0_POSE_CHEST': False,
             'is_facing_RIGHT_HAND_KNUCKLE_POSE_NOSE': False,
@@ -248,6 +251,7 @@ class AStreamFeatureExtractor:
             
             # 🟢 新增：Z 軸向量 (V分類 去、來)
             'vector_align_HAND_out': False,
+            'vector_align_HAND_in': False,
             'vector_change_HAND_in_out': False,
             
             # 📌 動態特徵 (點擊、畫圓、平移)
@@ -258,6 +262,7 @@ class AStreamFeatureExtractor:
             'detect_small_swipe_HAND_horizontal': False, 
             'detect_circle_HAND': False,
             'detect_circle_RIGHT_HAND': False,            
+            'detect_circle_LEFT_HAND': False,
             'detect_tap_HAND': False,
             'detect_small_move_outwards_RIGHT_HAND': False, 
             
@@ -375,8 +380,14 @@ class AStreamFeatureExtractor:
 
             # 🟢 新增：需要真正計算的動作/形狀特徵
             'is_O_shape_HAND': False,                 
+            'is_O_shape_LEFT_HAND': False,
+            'is_O_shape_BOTH_HANDS': False,
             'is_claw_HAND': False,                    
+            'is_claw_LEFT_HAND': False,
+            'is_claw_BOTH_HANDS': False,
             'is_fingers_bent_HAND': False,            
+            'is_index_bent_fist_HAND': False,
+            'index_bend_angle_RIGHT_HAND': 3.14,
             'is_pinch_middle_HAND': False,            
             'is_V_shape_LEFT_HAND': False,            
             'is_fist_LEFT_HAND': False,               
@@ -703,6 +714,7 @@ class AStreamFeatureExtractor:
                 current_features['vector_align_HAND_8_CAMERA_AXIS'] = round(-dz / finger_length, 3)
                 current_features['vector_align_RIGHT_HAND_8_CAMERA_AXIS'] = current_features['vector_align_HAND_8_CAMERA_AXIS']
                 current_features['vector_align_HAND_8_SIDE_AXIS'] = round(abs(dx) / finger_length, 3)
+                current_features['vector_align_HAND_8_RIGHT_AXIS'] = round(dx / finger_length, 3)
                 current_features['vector_align_HAND_8_DOWN_AXIS'] = round(dy / finger_length, 3)
                 current_features['vector_align_RIGHT_HAND_8_DOWN_AXIS'] = current_features['vector_align_HAND_8_DOWN_AXIS']
 
@@ -776,6 +788,7 @@ class AStreamFeatureExtractor:
                     z_diff = self.hand_z_history[-1] - self.hand_z_history[0]
                     current_features['detect_move_HAND'] = abs(z_diff) > 0.02
                     current_features['vector_align_HAND_out'] = z_diff > 0.02
+                    current_features['vector_align_HAND_in'] = z_diff < -0.02
                     current_features['detect_swipe_HAND_forward'] = z_diff > 0.02
                     current_features['vector_change_HAND_in_out'] = abs(z_diff) > 0.02
 
@@ -802,6 +815,17 @@ class AStreamFeatureExtractor:
                     current_features['detect_small_swipe_HAND_horizontal'] = (0.08 < x_range <= 0.13) and (x_range > y_range * 1.2)
                     current_features['detect_circle_HAND'] = (x_range > 0.05) and (y_range > 0.05)
                     current_features['detect_circle_RIGHT_HAND'] = current_features['detect_circle_HAND'] # 🟢 新增
+
+                    # 「我們／你們」的畫圈以手腕帶動為主；另外追蹤手腕的
+                    # X/Y 範圍，避免只依食指尖的軌跡而把整隻手臂的移動當成畫圈。
+                    if len(self.wrist_x_history) >= 15 and len(self.wrist_y_history) >= 15:
+                        wrist_xs = self.wrist_x_history[-15:]
+                        wrist_ys = self.wrist_y_history[-15:]
+                        wrist_x_range = max(wrist_xs) - min(wrist_xs)
+                        wrist_y_range = max(wrist_ys) - min(wrist_ys)
+                        current_features['detect_wrist_circle_RIGHT_HAND'] = (
+                            wrist_x_range > 0.035 and wrist_y_range > 0.035
+                        )
                     
                     # 🌟 新增：垂直滑動 (公車_B)
                     current_features['detect_swipe_RIGHT_HAND_vertical'] = (y_range > 0.1) and (x_range < 0.08)
@@ -1018,13 +1042,41 @@ class AStreamFeatureExtractor:
                     current_features['is_claw_HAND'] or current_features['is_fingers_bent_HAND']
                 )
 
+                # 十：食指彎曲，其餘手指握緊。
+                # 不再用 is_fist_HAND 直接代替，因為一般拳頭也會讓該條件成立。
+                # 以食指 PIP/DIP 關節角度判斷彎曲，對角度與影像抖動保留容錯。
+                # 這段位於 extract_features() 的前半部；後面 AI tensor 區塊的
+                # get_px_coord() 尚未建立，所以直接在這裡建立像素座標，避免
+                # 執行時 NameError。
+                def _hand_px_coord(lm):
+                    return np.array([lm.x * img_w, lm.y * img_h, lm.z * img_w])
+
+                index_pip_angle = angle_between_points(
+                    _hand_px_coord(hand_lms[5]),
+                    _hand_px_coord(hand_lms[6]),
+                    _hand_px_coord(hand_lms[7]),
+                )
+                index_dip_angle = angle_between_points(
+                    _hand_px_coord(hand_lms[6]),
+                    _hand_px_coord(hand_lms[7]),
+                    _hand_px_coord(hand_lms[8]),
+                )
+                index_bend_angle = min(index_pip_angle, index_dip_angle)
+                current_features['index_bend_angle_RIGHT_HAND'] = round(float(index_bend_angle), 3)
+                current_features['is_index_bent_fist_HAND'] = (
+                    not thumb_open and
+                    not middle_open and
+                    not ring_open and
+                    not pinky_open and
+                    index_bend_angle < 2.75
+                )
+
                 #6/17 新增
                 current_features['detect_move_forward_HAND'] = current_features['move_forwards_RIGHT_HAND']
                 current_features['detect_move_backward_HAND'] = current_features['move_backwards_RIGHT_HAND']
                 current_features['detect_swipe_HAND_backward'] = current_features['move_backwards_RIGHT_HAND']
                 current_features['detect_swipe_outwards_HAND'] = current_features['detect_swipe_HAND_outward']
                 current_features['detect_swipe_RIGHT_HAND_horizontal'] = current_features['detect_swipe_HAND_horizontal']
-                current_features['detect_wrist_circle_RIGHT_HAND'] = current_features['detect_circle_RIGHT_HAND']
                 current_features['palms_down_BOTH_HANDS'] = current_features['palm_facing_down_BOTH_HANDS']
                 current_features['palms_up_BOTH_HANDS'] = current_features['palm_facing_up_BOTH_HANDS']
                 current_features['is_claw_RIGHT_HAND'] = current_features['is_claw_HAND']
@@ -1098,6 +1150,29 @@ class AStreamFeatureExtractor:
                     current_features['is_C_shape_LEFT_HAND'] = l_thumb_open and l_index_open and not l_middle_open and not l_ring_open
                     current_features['is_L_shape_LEFT_HAND'] = l_thumb_open and l_index_open and not l_middle_open and not l_ring_open and not l_pinky_open
                     current_features['is_L_shape_BOTH_HANDS'] = current_features['is_L_shape_HAND'] and current_features['is_L_shape_LEFT_HAND']
+
+                    # 左手／雙手 O 型與爪型；提供給「多_C」與「生氣_B」使用。
+                    # 與右手使用相同的幾何判定，避免只看右手造成雙手動作誤判。
+                    current_features['is_O_shape_LEFT_HAND'] = (
+                        calculate_dist_3d(l_lms[4], l_lms[8]) < 0.04 and
+                        not l_middle_open and not l_ring_open and not l_pinky_open
+                    )
+                    current_features['is_O_shape_BOTH_HANDS'] = (
+                        current_features['is_O_shape_HAND'] and
+                        current_features['is_O_shape_LEFT_HAND']
+                    )
+
+                    current_features['is_claw_LEFT_HAND'] = (
+                        not l_index_open and not l_middle_open and
+                        not l_ring_open and not l_pinky_open and
+                        not l_fist and
+                        calculate_dist_3d(l_lms[8], l_lms[0]) >
+                        calculate_dist_3d(l_lms[6], l_lms[0]) * 0.8
+                    )
+                    current_features['is_claw_BOTH_HANDS'] = (
+                        current_features['is_claw_HAND'] and
+                        current_features['is_claw_LEFT_HAND']
+                    )
                     
                     current_features['is_double_hook_LEFT_HAND'] = not l_index_open and not l_middle_open and not l_thumb_open
                     current_features['is_double_hook_BOTH_HANDS'] = current_features['is_double_hook_RIGHT_HAND'] and current_features['is_double_hook_LEFT_HAND']
@@ -1369,9 +1444,19 @@ class AStreamFeatureExtractor:
                     detect_left_rot = len(self.l_wrist_angle_history) >= 10 and np.var(self.l_wrist_angle_history[-10:]) > 0.03
                     current_features['detect_wrist_rotation_BOTH_HANDS'] = current_features['detect_wrist_rotation_RIGHT_HAND'] and detect_left_rot
                     
-                    # 雙手畫圓 (腳踏車、划船)
-                    current_features['detect_circle_BOTH_HANDS'] = current_features['detect_circle_RIGHT_HAND']
-                    current_features['detect_alternating_circle_BOTH_HANDS'] = current_features['detect_circle_RIGHT_HAND']
+                    # 雙手畫圓 (腳踏車、划船、種類)
+                    # 不能只沿用右手結果；種類與雙手動作需要左右手都確實有軌跡。
+                    if len(self.l_wrist_x_history) >= 15 and len(self.l_wrist_y_history) >= 15:
+                        left_x_range = max(self.l_wrist_x_history) - min(self.l_wrist_x_history)
+                        left_y_range = max(self.l_wrist_y_history) - min(self.l_wrist_y_history)
+                        current_features['detect_circle_LEFT_HAND'] = (
+                            left_x_range > 0.05 and left_y_range > 0.05
+                        )
+                    current_features['detect_circle_BOTH_HANDS'] = (
+                        current_features['detect_circle_RIGHT_HAND'] and
+                        current_features['detect_circle_LEFT_HAND']
+                    )
+                    current_features['detect_alternating_circle_BOTH_HANDS'] = current_features['detect_circle_BOTH_HANDS']
 
                     # 🟢 新增：雙手四指伸直拇指收（停車/塞車/車禍）
                     # 沿用上面已經算好的 l_thumb_open/l_index_open/.../l_pinky_open，

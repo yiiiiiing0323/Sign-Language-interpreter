@@ -166,40 +166,20 @@ class TranslationWorker:
 
         self.system_instruction = """
         你是一個專業的台灣手語(TSL)翻譯員，負責將一連串辨識出的手語單字（Glosses）重組並潤飾成一句自然、通順的繁體中文日常用語。
+        注意：常見的固定複合詞（如親屬稱謂、專有名詞）已在前端比對規則庫合併過，你收到的詞通常已是合併後的結果，不需要再自己組合。
 
-        【核心任務與雜訊過濾規則】
-        1. 容錯與去重防禦：輸入是由影像辨識即時產生的，可能包含短時間內的「重複跳動」或「無意義雜訊字」（例如：["跑", "腳踏車", "物", "腳踏車"]）。你必須自動過濾重複詞、去除無意義的贅字（如「物」），將其平滑化。
-        2. 語序調整：手語常將時間副詞放句首、動詞放句尾。請依中文習慣調整成最自然的語序。
-        3. 複合詞融合：若遇到手語特有的固定複合詞（即使前端未完全融合），請合成最正確的中文。
-        4. 混淆詞與候選詞：若出現方括號或斜線的候選詞（如 [A/B]），請根據上下文「只挑選最適合的一個」，絕對不要保留括號與斜線。
-        5. 邊界條件：若輸入語意極不完整，仍請輸出最自然的短句，不要拒絕回答，也不要自行腦補過多不存在的背景資訊。
-        6. 輸出限制：只輸出翻譯後的繁體中文句子與必要標點符號。絕對不要輸出任何解釋、分析、原始 Gloss 或引言。
+        【處理規則】
+        1. 容錯與去重：輸入由即時影像辨識產生，可能包含短時間重複跳動或無意義雜訊字（如「物」）。請自動過濾重複詞與贅字。
+        2. 語序調整：手語常將時間副詞放句首、動詞放句尾，請依中文口語習慣調整語序（例：["昨天","我","學校","去"] -> 我昨天去學校。["明天","雨","下"] -> 明天會下雨。）
+        3. 問候語與疑問句：轉換成道地口語（例：["早上","平安","好"] -> 早安，你好。["你","吃飯","已經"] -> 你吃過飯了嗎？）
+        4. 語氣與否定：正確處理強調詞與否定語序（例：["爸爸","生氣","很"] -> 爸爸很生氣。["我","不是"] -> 不是我。）
+        5. 人稱與狀態句：補上必要的「是」等動詞（例：["我們","學生"] -> 我們是學生。）
+        6. 混淆詞：遇到方括號/斜線標記的候選詞（如 [A/B]），依上下文只選一個，絕對不保留括號與斜線（例：["你好","[先生/謝謝]"] -> 你好，先生。["[捷運/火車]","搭","我","學校","去"] -> 我搭捷運去學校。）
+        7. 邊界條件：語意極不完整時仍輸出最自然的短句，不要拒答，也不要腦補不存在的背景資訊。
 
-        【翻譯規則與範例】
-        1. 手語常將時間副詞放句首，請調整至自然位置。
-           - 輸入：["昨天", "我", "學校", "去"] -> 輸出：我昨天去學校。
-           - 輸入：["明天", "雨", "下"] -> 輸出：明天會下雨。
-        2. 常見問候語請翻譯成最道地的口語。
-           - 輸入：["早上", "平安", "好"] -> 輸出：早安，你好。
-           - 輸入：["你", "吃飯", "已經"] -> 輸出：你吃過飯了嗎？
-        3. 強調語氣（如：非常、很）
-           - 輸入：["爸爸", "生氣", "很"] -> 輸出：爸爸很生氣。
-        4. 人稱與狀態
-           - 輸入：["我們", "學生"] -> 輸出：我們是學生。
-        5. 特殊專有名詞組合
-           - 輸入：["學生", "證明"] -> 輸出：學生證。
-           - 輸入：["我", "不是"] -> 輸出：不是我。
-           - 輸入：["爸爸", "弟弟"] -> 輸出：叔叔。
-           - 輸入：["爸爸", "弟弟", "太太"] -> 輸出：嬸嬸。
-           - 輸入：["結婚", "女生"] -> 輸出：太太。
-        
-        # 混淆詞判斷規則
-        6. 當遇到用方括號標記的混淆詞（如：[先生/謝謝]），請根據上下文選擇：
-           - 輸入：["你好", "[先生/謝謝]"] -> 輸出：你好，先生。
-           - 輸入：["幫忙", "我", "[先生/謝謝]"] -> 輸出：謝謝你幫我。
-           - 輸入：["[捷運/火車]", "搭", "我", "學校", "去"] -> 輸出：我搭捷運去學校。
-
-        請直接輸出翻譯後的句子，絕對不要輸出任何解釋、引言或標點符號之外的廢話。
+        【輸出格式】
+        只能回傳 JSON 物件，格式為 {"sentence": "翻譯後的繁體中文句子"}。
+        sentence 欄位只放翻譯後的句子與必要標點，絕對不包含解釋、分析、原始 Gloss 或引言。
         """
 
     def add_word(self, word, raw_word=None):
@@ -256,48 +236,70 @@ class TranslationWorker:
                         {"parts": [{"text": f"請翻譯以下手語單字：{words_to_translate}"}]}
                     ],
                     "generationConfig": {
-                        "temperature": 0.2
+                        "temperature": 0.2,
+                        "maxOutputTokens": 200,
+                        "thinkingConfig": {
+                            "thinkingBudget": 0
+                        },
+                        "responseMimeType": "application/json",
+                        "responseSchema": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "sentence": {"type": "STRING"}
+                            },
+                            "required": ["sentence"]
+                        }
                     }
                 }
-                
+
                 max_retries = len(fallback_models)
+                last_status_code = None
                 for attempt in range(max_retries):
                     current_model = fallback_models[attempt]
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={clean_api_key}"
-                    
+
                     try:
                         response = requests.post(url, headers=headers, json=payload, timeout=8)
-                        
-                        if response.status_code in [404, 429, 503]:
-                            if response.status_code == 404:
+                        last_status_code = response.status_code
+
+                        if response.status_code in [400, 404, 429, 503]:
+                            if response.status_code == 400:
+                                print(f"⚠️ [{current_model}] 請求格式錯誤 (400)，此模型可能不支援目前的參數，切換... 詳細訊息: {response.text}")
+                            elif response.status_code == 404:
                                 print(f"⚠️ [{current_model}] 模型不存在 (404)，切換...")
                             elif response.status_code == 429:
                                 print(f"⚠️ [{current_model}] 免費額度為 0 (429)，切換...")
                             elif response.status_code == 503:
                                 print(f"⚠️ [{current_model}] 伺服器塞車 (503)，切換...")
-                            
-                            time.sleep(0.5) 
-                            continue 
-                        
+
+                            time.sleep(0.5)
+                            continue
+
                         if response.status_code != 200:
                             print(f"\n🚨 [{current_model}] 狀態碼: {response.status_code}, 詳細訊息: {response.text}")
                             self.final_sentence = f"API 錯誤: {response.status_code}"
                             return
-                        
+
                         data = response.json()
-                        self.final_sentence = data['candidates'][0]['content']['parts'][0]['text'].strip()
+                        raw_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
+                        try:
+                            parsed = json.loads(raw_text)
+                            self.final_sentence = str(parsed.get("sentence", "")).strip()
+                        except (json.JSONDecodeError, AttributeError):
+                            # 保底：萬一模型沒有依 schema 回傳 JSON，退回舊有的純文字處理
+                            self.final_sentence = raw_text
                         print(f"[LLM] 翻譯成功 🎉 (使用的模型: {current_model}): {self.final_sentence}")
-                        return 
-                        
+                        return
+
                     except requests.exceptions.Timeout:
                         print(f"⚠️ [{current_model}] 請求超時 (Timeout)，切換備用路線...")
-                        continue 
+                        continue
                     except requests.exceptions.ConnectionError:
                         print("\n🚨 [LLM 網路錯誤] 無法連線！請檢查學校防火牆或切換手機熱點。")
                         self.final_sentence = "網路連線失敗"
                         return
 
-                print("\n🚨 [LLM 錯誤] 所有的 2.5 備用模型都忙碌中或無可用額度。")
+                print(f"\n🚨 [LLM 錯誤] 所有的 2.5 備用模型都失敗了（最後狀態碼: {last_status_code}）。")
                 self.final_sentence = "伺服器忙碌中，請稍後再試"
                 
         except Exception as e:
@@ -476,7 +478,7 @@ def main():
     face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)  # ⭐ 新增
     logger.info("MediaPipe 視覺引擎初始化完成")
     
-    translator = TranslationWorker(api_key=api_key, use_real_api=True)
+    translator = TranslationWorker(api_key=api_key)
 
     # API 驗證（保持不變）
     def _verify_api():
