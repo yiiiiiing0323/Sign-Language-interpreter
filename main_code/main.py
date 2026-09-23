@@ -45,6 +45,8 @@ except ImportError:
 # ⭐ 新增：匯入融合模組
 from fusion import DecisionFusion
 from compound_phrase import CompoundPhraseResolver
+from core.gloss_history import AppendOnlyGlossHistory
+from core.text_to_gloss import TextToGlossConverter, TextToGlossError
 
 logger = get_logger(__name__)
 perf_logger = get_logger("performance")
@@ -146,9 +148,17 @@ def put_chinese_text(img, text, position, text_color=(0, 255, 0), font_size=40):
 # 🌟 LLM 翻譯模組（保持你原有的 Gemini 版本）
 # ==========================================
 class TranslationWorker:
-    def __init__(self, api_key, use_real_api=False):
+    def __init__(
+        self,
+        api_key,
+        use_real_api=False,
+        text_to_gloss_converter=None,
+        history_writer=None,
+    ):
         self.use_real_api = use_real_api
         self.api_key = api_key
+        self.text_to_gloss_converter = text_to_gloss_converter
+        self.history_writer = history_writer
         self.word_buffer = []
         # 跟 word_buffer 一一對應，但保留 _A/_B/_N/_S 尾碼，只給複合詞比對用。
         # word_buffer 本身維持乾淨（顯示、送 Gemini 用），不受這個影響。
@@ -163,6 +173,17 @@ class TranslationWorker:
         self.translate_delay = 2.0
         self.display_duration = 5.0  
         self.translation_done_time = 0 
+
+        # 保留辨識批次的原始/正規化 Gloss，供第二階段比對與失敗備援。
+        self.last_camera_gloss_sequence = []
+        self.last_camera_raw_gloss_sequence = []
+        self.last_stage1_sentence = ""
+        self.last_stage2_result = None
+        self.playback_gloss_sequence = []
+        self.stage2_status = "idle"
+        self.stage2_in_progress = False
+        self._stage2_lock = threading.Lock()
+        self._stage2_job_id = 0
 
         self.system_instruction = """
         你是一個專業的台灣手語(TSL)翻譯員，負責將一連串辨識出的手語單字（Glosses）重組並潤飾成一句自然、通順的繁體中文日常用語。
@@ -194,6 +215,10 @@ class TranslationWorker:
             self.last_added_word = clean_word
             self.last_word_time = time.time()
             self.final_sentence = ""
+            self._append_history("camera_gloss", {
+                "gloss": clean_word,
+                "raw_gloss": str(raw_word).strip() if raw_word else clean_word,
+            })
             print(f"[翻譯雷達] 目前收集單字: {self.word_buffer}")
 
     #6/24
@@ -211,12 +236,170 @@ class TranslationWorker:
         self.last_word_time = now if now is not None else time.time()
         self.final_sentence = ""
 
-    def _call_llm(self, words_to_translate):
+    def _append_history(self, event, data):
+        if self.history_writer is None:
+            return
+        if not self.history_writer.append(event, data):
+            logger.warning("無法寫入 gloss history event=%s", event)
+
+    @staticmethod
+    def _compare_gloss_sequences(original_sequence, converted_sequence):
+        """Compare content without requiring the two stages to share order."""
+        original = [normalize_output_word(word) for word in (original_sequence or [])]
+        converted = [normalize_output_word(word) for word in (converted_sequence or [])]
+        original = [word for word in original if word]
+        converted = [word for word in converted if word]
+
+        original_counts = {}
+        converted_counts = {}
+        for word in original:
+            original_counts[word] = original_counts.get(word, 0) + 1
+        for word in converted:
+            converted_counts[word] = converted_counts.get(word, 0) + 1
+
+        missing = []
+        for word, count in original_counts.items():
+            missing.extend([word] * max(0, count - converted_counts.get(word, 0)))
+        extra = []
+        for word, count in converted_counts.items():
+            extra.extend([word] * max(0, count - original_counts.get(word, 0)))
+
+        matched = sum(min(count, converted_counts.get(word, 0)) for word, count in original_counts.items())
+        overlap = matched / len(original) if original else None
+        return {
+            "original_count": len(original),
+            "converted_count": len(converted),
+            "matched_count": matched,
+            "overlap": overlap,
+            "missing_from_stage2": missing,
+            "extra_in_stage2": extra,
+        }
+
+    def _run_stage2(self, sentence, source, fallback_gloss_sequence, job_id):
+        try:
+            result = self.text_to_gloss_converter.convert(sentence)
+            result["source"] = source
+            result["fallback_gloss_sequence"] = list(fallback_gloss_sequence or [])
+            result["comparison"] = self._compare_gloss_sequences(
+                fallback_gloss_sequence,
+                result.get("gloss_sequence", []),
+            )
+
+            # A valid Stage 2 result is preferred. If it fails or contains
+            # unknown terms, the preserved camera sequence remains available.
+            if result.get("gloss_sequence") and not result.get("unsupported_words"):
+                playback_sequence = list(result["gloss_sequence"])
+                fallback_used = False
+            elif fallback_gloss_sequence:
+                playback_sequence = list(fallback_gloss_sequence)
+                fallback_used = True
+                result["fallback_reason"] = "stage2_empty_or_unsupported"
+            else:
+                playback_sequence = []
+                fallback_used = False
+
+            result["playback_gloss_sequence"] = playback_sequence
+            result["fallback_used"] = fallback_used
+            # Every completed request is kept in the append-only history,
+            # including a result that became stale because a newer request
+            # started before this one returned.
+            self._append_history("stage2_result", result)
+            with self._stage2_lock:
+                if job_id != self._stage2_job_id:
+                    return
+                self.last_stage2_result = result
+                self.playback_gloss_sequence = playback_sequence
+                self.stage2_status = "completed_fallback" if fallback_used else "completed"
+                self.stage2_in_progress = False
+
+            print(f"[Text-to-Gloss] 完成 source={source} gloss={result.get('gloss_text', '')}")
+        except Exception as exc:
+            fallback = list(fallback_gloss_sequence or [])
+            error_record = {
+                "source": source,
+                "sentence": sentence,
+                "error": str(exc),
+                "fallback_gloss_sequence": fallback,
+            }
+            self._append_history("stage2_error", error_record)
+            with self._stage2_lock:
+                if job_id != self._stage2_job_id:
+                    return
+                self.last_stage2_result = {
+                    **error_record,
+                    "gloss_sequence": [],
+                    "gloss_text": "",
+                    "unsupported_words": [],
+                    "playback_gloss_sequence": fallback,
+                    "fallback_used": bool(fallback),
+                }
+                self.playback_gloss_sequence = fallback
+                self.stage2_status = "failed_fallback" if fallback else "failed"
+                self.stage2_in_progress = False
+            logger.exception("第二階段 Text-to-Gloss 失敗 source=%s", source)
+
+    def _start_stage2(self, sentence, source="camera_stage1", fallback_gloss_sequence=None):
+        sentence = str(sentence or "").strip()
+        fallback_gloss_sequence = list(fallback_gloss_sequence or [])
+        if not sentence:
+            return None
+
+        with self._stage2_lock:
+            self._stage2_job_id += 1
+            job_id = self._stage2_job_id
+            self.stage2_status = "pending"
+            self.stage2_in_progress = True
+            self.last_stage2_result = None
+
+        if self.text_to_gloss_converter is None:
+            with self._stage2_lock:
+                self.stage2_status = "unavailable_fallback" if fallback_gloss_sequence else "unavailable"
+                self.stage2_in_progress = False
+                self.playback_gloss_sequence = fallback_gloss_sequence
+            self._append_history("stage2_unavailable", {
+                "source": source,
+                "sentence": sentence,
+                "fallback_gloss_sequence": fallback_gloss_sequence,
+            })
+            return job_id
+
+        threading.Thread(
+            target=self._run_stage2,
+            args=(sentence, source, fallback_gloss_sequence, job_id),
+            daemon=True,
+        ).start()
+        return job_id
+
+    def submit_text_input(self, sentence, source="text"):
+        """Public entry point for future text and speech-to-text UI inputs."""
+        return self._start_stage2(sentence, source=source, fallback_gloss_sequence=[])
+
+    def get_playback_gloss_sequence(self):
+        with self._stage2_lock:
+            return list(self.playback_gloss_sequence)
+
+    def _call_llm(self, words_to_translate, original_gloss_sequence=None):
         self.is_translating = True
+        stage1_success = False
+        original_gloss_sequence = list(original_gloss_sequence or words_to_translate or [])
         try:
             if not self.use_real_api:
                 time.sleep(1) 
                 self.final_sentence = f"[測試翻譯] {' '.join(words_to_translate)}"
+                self.last_camera_gloss_sequence = list(words_to_translate)
+                self.last_camera_raw_gloss_sequence = list(original_gloss_sequence)
+                self.last_stage1_sentence = self.final_sentence
+                self._append_history("stage1_sentence", {
+                    "source": "camera_test_mode",
+                    "gloss_sequence": list(words_to_translate),
+                    "raw_gloss_sequence": list(original_gloss_sequence),
+                    "sentence": self.final_sentence,
+                })
+                self._start_stage2(
+                    self.final_sentence,
+                    source="camera_stage1_test_mode",
+                    fallback_gloss_sequence=list(words_to_translate),
+                )
             else:
                 print(f"[LLM] 發送雲端請求: {words_to_translate}...")
                 clean_api_key = self.api_key.strip()
@@ -285,10 +468,27 @@ class TranslationWorker:
                         try:
                             parsed = json.loads(raw_text)
                             self.final_sentence = str(parsed.get("sentence", "")).strip()
+                            stage1_success = bool(self.final_sentence)
                         except (json.JSONDecodeError, AttributeError):
                             # 保底：萬一模型沒有依 schema 回傳 JSON，退回舊有的純文字處理
                             self.final_sentence = raw_text
+                            stage1_success = bool(self.final_sentence)
                         print(f"[LLM] 翻譯成功 🎉 (使用的模型: {current_model}): {self.final_sentence}")
+                        self.last_camera_gloss_sequence = list(words_to_translate)
+                        self.last_camera_raw_gloss_sequence = list(original_gloss_sequence)
+                        self.last_stage1_sentence = self.final_sentence
+                        self._append_history("stage1_sentence", {
+                            "source": "camera",
+                            "gloss_sequence": list(words_to_translate),
+                            "raw_gloss_sequence": list(original_gloss_sequence),
+                            "sentence": self.final_sentence,
+                        })
+                        if stage1_success:
+                            self._start_stage2(
+                                self.final_sentence,
+                                source="camera_stage1",
+                                fallback_gloss_sequence=list(words_to_translate),
+                            )
                         return
 
                     except requests.exceptions.Timeout:
@@ -324,9 +524,20 @@ class TranslationWorker:
 
             if no_hands_trigger or timeout_trigger:
                 words_to_translate = list(self.word_buffer)
+                original_gloss_sequence = list(self.raw_word_buffer or self.word_buffer)
+                self.last_camera_gloss_sequence = list(words_to_translate)
+                self.last_camera_raw_gloss_sequence = list(original_gloss_sequence)
+                self._append_history("camera_gloss_batch", {
+                    "gloss_sequence": words_to_translate,
+                    "raw_gloss_sequence": original_gloss_sequence,
+                })
                 self.word_buffer.clear()
                 self.raw_word_buffer.clear()
-                threading.Thread(target=self._call_llm, args=(words_to_translate,), daemon=True).start()
+                threading.Thread(
+                    target=self._call_llm,
+                    args=(words_to_translate, original_gloss_sequence),
+                    daemon=True,
+                ).start()
 
 # ==========================================
 # ⭐ 主程式 (大幅修改)
@@ -478,7 +689,38 @@ def main():
     face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)  # ⭐ 新增
     logger.info("MediaPipe 視覺引擎初始化完成")
     
-    translator = TranslationWorker(api_key=api_key)
+    # 保留原本的測試模式預設值；若要啟用第一階段與第二階段的真實 Gemini 呼叫，
+    # 請在 .env 設定 GEMINI_USE_REAL_API=1。未設定時不會改變原本的測試流程。
+    gemini_use_real_api = os.getenv("GEMINI_USE_REAL_API", "0").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+    history_writer = None
+    try:
+        history_path = os.path.join(app_base_dir, "gloss_history.txt")
+        history_writer = AppendOnlyGlossHistory(history_path)
+        print(f"[Gloss紀錄] 追加寫入：{history_path}")
+    except Exception as exc:
+        logger.exception("Gloss 歷史紀錄初始化失敗：%s", exc)
+        print(f"⚠️ Gloss 歷史紀錄無法啟用：{exc}")
+
+    text_to_gloss_converter = None
+    try:
+        text_to_gloss_converter = TextToGlossConverter(
+            excel_path=resource_path("database.xlsx"),
+            use_real_api=gemini_use_real_api,
+        )
+        print(f"[Text-to-Gloss] 已載入 {len(text_to_gloss_converter.gloss_vocabulary)} 個 Excel 詞彙")
+    except Exception as exc:
+        logger.exception("Text-to-Gloss 初始化失敗：%s", exc)
+        print(f"⚠️ Text-to-Gloss 尚未啟用：{exc}")
+
+    translator = TranslationWorker(
+        api_key=api_key,
+        use_real_api=gemini_use_real_api,
+        text_to_gloss_converter=text_to_gloss_converter,
+        history_writer=history_writer,
+    )
 
     # API 驗證（保持不變）
     def _verify_api():
