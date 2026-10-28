@@ -2,8 +2,8 @@
 
 This module is intentionally independent from the camera A/B pipeline.  It
 uses the project's Excel ``中文`` column as a first-pass Gloss allow-list and
-asks Gemini for a structured conversion from ordinary Traditional Chinese to
-the project's Gloss order.
+asks a configured LLM provider for a structured conversion from ordinary
+Traditional Chinese to the project's Gloss order.
 
 The model is not allowed to invent an animation vocabulary.  The returned
 Gloss sequence is validated locally before it is exposed to the caller.
@@ -12,6 +12,7 @@ Gloss sequence is validated locally before it is exposed to the caller.
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 import pandas as pd
@@ -25,6 +26,23 @@ except ImportError:  # pragma: no cover - requirements.txt includes python-doten
     load_dotenv = None
 
 from core.word_normalization import word_alternatives
+from core.gemini_models import (
+    DEFAULT_MODELS,
+    GEMMA_REQUEST_TIMEOUT,
+    MODEL_REQUEST_TIMEOUT,
+    TOTAL_REQUEST_TIMEOUT,
+    configure_model_thinking,
+    load_gemma_models,
+    load_models,
+)
+from core.llm_providers import load_provider_order
+from core.cgu_gateway import (
+    CGU_REQUEST_TIMEOUT,
+    CGUGatewayError,
+    generate_json as cgu_generate_json,
+    load_cgu_api_key,
+    load_cgu_models,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -34,12 +52,6 @@ if load_dotenv is not None:
     # environment variables still win by python-dotenv's default behavior.
     load_dotenv()
 
-
-DEFAULT_MODELS = (
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-flash-latest",
-)
 
 # These are semantic markers produced by the text converter.  They describe
 # grammar/non-manual information and therefore do not have to be rows in the
@@ -144,11 +156,7 @@ class TextToGlossConverter:
     @classmethod
     def load_models(cls) -> List[str]:
         """Load an optional comma-separated model fallback list from .env."""
-        configured = os.getenv("GEMINI_MODELS", "")
-        if not configured.strip():
-            return list(DEFAULT_MODELS)
-        models = [part.strip() for part in configured.replace(";", ",").split(",")]
-        return cls._dedupe(models) or list(DEFAULT_MODELS)
+        return load_models()
 
     @staticmethod
     def _find_column(columns: Iterable[Any], preferred: str) -> Optional[Any]:
@@ -321,52 +329,127 @@ ASPECT_CONTINUOUS、NEG_NOT、NEG_NONE、NEG_DONT、NEG_CANNOT、完成、進行
         }
 
     def convert(self, sentence: str) -> Dict[str, Any]:
-        """Call Gemini with model/key fallback and return validated JSON."""
+        """Call configured LLM providers and return a validated Gloss result."""
         sentence = str(sentence or "").strip()
         if not sentence:
             raise ValueError("輸入句子不可為空")
         if not self.use_real_api:
-            raise TextToGlossError("目前設定為離線模式，未執行 Gemini API")
-        if not self.api_keys:
-            raise TextToGlossError("找不到 GEMINI_API_KEY 或 GEMINI_API_KEYS")
+            raise TextToGlossError("目前設定為離線模式，未執行 LLM API")
+        cgu_api_key = load_cgu_api_key()
+        if not self.api_keys and not cgu_api_key:
+            raise TextToGlossError(
+                "找不到 CGU_API_KEY 或 GEMINI_API_KEY"
+            )
         if self.session is None:
             raise TextToGlossError("目前 Python 環境沒有安裝 requests，請先安裝 requirements.txt")
 
         errors = []
         payload = self.build_payload(sentence)
-        for key_index, api_key in enumerate(self.api_keys, start=1):
-            for model in self.models:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-                try:
-                    response = self.session.post(
-                        url,
-                        params={"key": api_key},
-                        headers={"Content-Type": "application/json"},
-                        json=payload,
-                        timeout=self.timeout,
-                    )
-                    if response.status_code != 200:
-                        errors.append(f"key#{key_index}/{model}: HTTP {response.status_code}")
-                        if response.status_code not in {400, 401, 403, 404, 429, 500, 503}:
-                            continue
+        request_deadline = time.monotonic() + TOTAL_REQUEST_TIMEOUT
+        cgu_schema = {
+            "type": "object",
+            "properties": {
+                "input_sentence": {"type": "string"},
+                "gloss_sequence": {"type": "array", "items": {"type": "string"}},
+                "gloss_text": {"type": "string"},
+                "sentence": {"type": "string"},
+                "unsupported_words": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": [
+                "input_sentence",
+                "gloss_sequence",
+                "gloss_text",
+                "sentence",
+                "unsupported_words",
+            ],
+            "additionalProperties": False,
+        }
+
+        for provider in load_provider_order():
+            remaining_time = request_deadline - time.monotonic()
+            if remaining_time <= 0:
+                errors.append("已達 LLM provider 備援總等待上限")
+                break
+
+            if provider == "cgu":
+                if not cgu_api_key:
+                    continue
+                user_input = payload["contents"][0]["parts"][0]["text"]
+                for model in load_cgu_models():
+                    remaining_time = request_deadline - time.monotonic()
+                    if remaining_time <= 0:
+                        errors.append("已達 CGU Gateway 備援總等待上限")
+                        break
+                    try:
+                        parsed = cgu_generate_json(
+                            api_key=cgu_api_key,
+                            model=model,
+                            instructions=payload["systemInstruction"]["parts"][0]["text"],
+                            input_text=user_input,
+                            schema_name="traditional_chinese_to_sign_gloss",
+                            schema=cgu_schema,
+                            timeout=min(self.timeout, CGU_REQUEST_TIMEOUT, remaining_time),
+                            session=self.session,
+                            max_output_tokens=300,
+                        )
+                        result = self.validate_result(parsed, sentence)
+                        logger.info(
+                            "text_to_gloss_success provider=%s model=%s gloss_count=%s unsupported=%s",
+                            provider,
+                            model,
+                            len(result["gloss_sequence"]),
+                            len(result["unsupported_words"]),
+                        )
+                        return result
+                    except Exception as exc:
+                        errors.append(f"{provider}/{model}: {exc}")
                         continue
 
-                    data = response.json()
-                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    parsed = json.loads(raw_text)
-                    result = self.validate_result(parsed, sentence)
-                    logger.info(
-                        "text_to_gloss_success key_index=%s model=%s gloss_count=%s unsupported=%s",
-                        key_index,
-                        model,
-                        len(result["gloss_sequence"]),
-                        len(result["unsupported_words"]),
-                    )
-                    return result
-                except Exception as exc:
-                    errors.append(f"key#{key_index}/{model}: {type(exc).__name__}")
+            if provider in {"gemma", "gemini"}:
+                current_models = load_gemma_models() if provider == "gemma" else self.models
+                for key_index, api_key in enumerate(self.api_keys, start=1):
+                    for model in current_models:
+                        remaining_time = request_deadline - time.monotonic()
+                        if remaining_time <= 0:
+                            errors.append("已達 Gemini 備援翻譯總等待上限")
+                            break
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+                        try:
+                            configure_model_thinking(payload, model)
+                            response = self.session.post(
+                                url,
+                                headers={
+                                    "Content-Type": "application/json",
+                                    "x-goog-api-key": api_key,
+                                },
+                                json=payload,
+                                timeout=min(
+                                    self.timeout,
+                                    GEMMA_REQUEST_TIMEOUT if provider == "gemma" else MODEL_REQUEST_TIMEOUT,
+                                    remaining_time,
+                                ),
+                            )
+                            if response.status_code != 200:
+                                errors.append(f"{provider} key#{key_index}/{model}: HTTP {response.status_code}")
+                                continue
 
-        raise TextToGlossError("所有 Text-to-Gloss API 嘗試皆失敗：" + "; ".join(errors))
+                            data = response.json()
+                            raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                            parsed = json.loads(raw_text)
+                            result = self.validate_result(parsed, sentence)
+                            logger.info(
+                                "text_to_gloss_success provider=%s key_index=%s model=%s gloss_count=%s unsupported=%s",
+                                provider,
+                                key_index,
+                                model,
+                                len(result["gloss_sequence"]),
+                                len(result["unsupported_words"]),
+                            )
+                            return result
+                        except Exception as exc:
+                            errors.append(f"{provider} key#{key_index}/{model}: {type(exc).__name__}")
+
+        raise TextToGlossError("所有 Text-to-Gloss provider 嘗試皆失敗：" + "; ".join(errors))
 
 
 __all__ = [
