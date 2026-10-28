@@ -46,6 +46,22 @@ except ImportError:
 from fusion import DecisionFusion
 from compound_phrase import CompoundPhraseResolver
 from core.gloss_history import AppendOnlyGlossHistory
+from core.gemini_models import (
+    GEMMA_REQUEST_TIMEOUT,
+    MODEL_REQUEST_TIMEOUT,
+    TOTAL_REQUEST_TIMEOUT,
+    configure_model_thinking,
+    load_gemma_models,
+    load_models,
+)
+from core.llm_providers import load_provider_order
+from core.cgu_gateway import (
+    CGU_REQUEST_TIMEOUT,
+    CGUGatewayError,
+    generate_json as cgu_generate_json,
+    load_cgu_api_key,
+    load_cgu_models,
+)
 from core.text_to_gloss import TextToGlossConverter, TextToGlossError
 
 logger = get_logger(__name__)
@@ -380,8 +396,38 @@ class TranslationWorker:
 
     def _call_llm(self, words_to_translate, original_gloss_sequence=None):
         self.is_translating = True
-        stage1_success = False
         original_gloss_sequence = list(original_gloss_sequence or words_to_translate or [])
+
+        def finish_translation(sentence, provider, model):
+            self.final_sentence = sentence
+            self.last_camera_gloss_sequence = list(words_to_translate)
+            self.last_camera_raw_gloss_sequence = list(original_gloss_sequence)
+            self.last_stage1_sentence = sentence
+            self._append_history("stage1_sentence", {
+                "source": "camera",
+                "provider": provider,
+                "model": model,
+                "gloss_sequence": list(words_to_translate),
+                "raw_gloss_sequence": list(original_gloss_sequence),
+                "sentence": sentence,
+            })
+            print(f"[LLM] 翻譯成功 🎉 (provider: {provider}, model: {model}): {sentence}")
+            self._start_stage2(
+                sentence,
+                source="camera_stage1",
+                fallback_gloss_sequence=list(words_to_translate),
+            )
+
+        def gemini_error_detail(response, api_key):
+            try:
+                error = response.json().get("error", {})
+                message = str(error.get("message", "")).strip()
+            except (ValueError, TypeError, AttributeError):
+                return ""
+            if api_key:
+                message = message.replace(api_key, "[redacted]")
+            return message[:180]
+
         try:
             if not self.use_real_api:
                 time.sleep(1) 
@@ -402,15 +448,7 @@ class TranslationWorker:
                 )
             else:
                 print(f"[LLM] 發送雲端請求: {words_to_translate}...")
-                clean_api_key = self.api_key.strip()
-                
-                fallback_models = [
-                    "gemini-2.5-flash",
-                    "gemini-2.5-flash-lite",
-                    "gemini-flash-latest"
-                ]
-                
-                headers = {'Content-Type': 'application/json'}
+                fallback_models = load_models()
                 payload = {
                     "systemInstruction": {
                         "parts": [{"text": self.system_instruction}]
@@ -421,9 +459,6 @@ class TranslationWorker:
                     "generationConfig": {
                         "temperature": 0.2,
                         "maxOutputTokens": 200,
-                        "thinkingConfig": {
-                            "thinkingBudget": 0
-                        },
                         "responseMimeType": "application/json",
                         "responseSchema": {
                             "type": "OBJECT",
@@ -435,71 +470,105 @@ class TranslationWorker:
                     }
                 }
 
-                max_retries = len(fallback_models)
-                last_status_code = None
-                for attempt in range(max_retries):
-                    current_model = fallback_models[attempt]
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={clean_api_key}"
+                request_deadline = time.monotonic() + TOTAL_REQUEST_TIMEOUT
+                gemini_api_key = str(self.api_key or "").strip()
+                last_error = "沒有可用的 API provider 或金鑰"
 
-                    try:
-                        response = requests.post(url, headers=headers, json=payload, timeout=8)
-                        last_status_code = response.status_code
+                for provider in load_provider_order():
+                    remaining_time = request_deadline - time.monotonic()
+                    if remaining_time <= 0:
+                        print("⚠️ API provider 備援已達總等待上限，停止本次請求。")
+                        break
 
-                        if response.status_code in [400, 404, 429, 503]:
-                            if response.status_code == 400:
-                                print(f"⚠️ [{current_model}] 請求格式錯誤 (400)，此模型可能不支援目前的參數，切換... 詳細訊息: {response.text}")
-                            elif response.status_code == 404:
-                                print(f"⚠️ [{current_model}] 模型不存在 (404)，切換...")
-                            elif response.status_code == 429:
-                                print(f"⚠️ [{current_model}] 免費額度為 0 (429)，切換...")
-                            elif response.status_code == 503:
-                                print(f"⚠️ [{current_model}] 伺服器塞車 (503)，切換...")
-
-                            time.sleep(0.5)
+                    if provider == "cgu":
+                        provider_api_key = load_cgu_api_key()
+                        if not provider_api_key:
                             continue
+                        for current_model in load_cgu_models():
+                            remaining_time = request_deadline - time.monotonic()
+                            if remaining_time <= 0:
+                                break
+                            try:
+                                result = cgu_generate_json(
+                                    api_key=provider_api_key,
+                                    model=current_model,
+                                    instructions=self.system_instruction,
+                                    input_text=f"請翻譯以下手語單字：{words_to_translate}",
+                                    schema_name="sign_language_translation",
+                                    schema={
+                                        "type": "object",
+                                        "properties": {"sentence": {"type": "string"}},
+                                        "required": ["sentence"],
+                                        "additionalProperties": False,
+                                    },
+                                    timeout=min(CGU_REQUEST_TIMEOUT, remaining_time),
+                                    max_output_tokens=200,
+                                )
+                                sentence = str(result.get("sentence", "")).strip()
+                                if not sentence:
+                                    raise CGUGatewayError("CGU Gateway 回傳的句子是空白")
+                                finish_translation(sentence, provider, current_model)
+                                return
+                            except CGUGatewayError as exc:
+                                last_error = str(exc)
+                                print(f"⚠️ [CGU Gateway/{current_model}] {last_error}，切換下一個模型...")
+                                continue
 
-                        if response.status_code != 200:
-                            print(f"\n🚨 [{current_model}] 狀態碼: {response.status_code}, 詳細訊息: {response.text}")
-                            self.final_sentence = f"API 錯誤: {response.status_code}"
-                            return
+                    if provider in {"gemma", "gemini"}:
+                        if not gemini_api_key:
+                            continue
+                        current_models = load_gemma_models() if provider == "gemma" else fallback_models
+                        for current_model in current_models:
+                            remaining_time = request_deadline - time.monotonic()
+                            if remaining_time <= 0:
+                                print("⚠️ Gemini 備援翻譯已達總等待上限，停止本次請求。")
+                                break
+                            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent"
+                            headers = {
+                                "Content-Type": "application/json",
+                                "x-goog-api-key": gemini_api_key,
+                            }
+                            try:
+                                configure_model_thinking(payload, current_model)
+                                response = requests.post(
+                                    url,
+                                    headers=headers,
+                                    json=payload,
+                                    timeout=min(
+                                        GEMMA_REQUEST_TIMEOUT if provider == "gemma" else MODEL_REQUEST_TIMEOUT,
+                                        remaining_time,
+                                    ),
+                                )
+                                if response.status_code != 200:
+                                    last_error = f"{provider} {current_model}: HTTP {response.status_code}"
+                                    detail = gemini_error_detail(response, gemini_api_key)
+                                    suffix = f"；{detail}" if detail else ""
+                                    print(f"⚠️ [{current_model}] 狀態碼 {response.status_code}{suffix}，切換備援模型...")
+                                    continue
 
-                        data = response.json()
-                        raw_text = data['candidates'][0]['content']['parts'][0]['text'].strip()
-                        try:
-                            parsed = json.loads(raw_text)
-                            self.final_sentence = str(parsed.get("sentence", "")).strip()
-                            stage1_success = bool(self.final_sentence)
-                        except (json.JSONDecodeError, AttributeError):
-                            # 保底：萬一模型沒有依 schema 回傳 JSON，退回舊有的純文字處理
-                            self.final_sentence = raw_text
-                            stage1_success = bool(self.final_sentence)
-                        print(f"[LLM] 翻譯成功 🎉 (使用的模型: {current_model}): {self.final_sentence}")
-                        self.last_camera_gloss_sequence = list(words_to_translate)
-                        self.last_camera_raw_gloss_sequence = list(original_gloss_sequence)
-                        self.last_stage1_sentence = self.final_sentence
-                        self._append_history("stage1_sentence", {
-                            "source": "camera",
-                            "gloss_sequence": list(words_to_translate),
-                            "raw_gloss_sequence": list(original_gloss_sequence),
-                            "sentence": self.final_sentence,
-                        })
-                        if stage1_success:
-                            self._start_stage2(
-                                self.final_sentence,
-                                source="camera_stage1",
-                                fallback_gloss_sequence=list(words_to_translate),
-                            )
-                        return
+                                data = response.json()
+                                raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                                try:
+                                    parsed = json.loads(raw_text)
+                                    sentence = str(parsed.get("sentence", "")).strip()
+                                except (json.JSONDecodeError, AttributeError):
+                                    sentence = raw_text
+                                if not sentence:
+                                    last_error = f"Gemini {current_model}: 空白回應"
+                                    continue
+                                finish_translation(sentence, provider, current_model)
+                                return
+                            except requests.exceptions.Timeout:
+                                last_error = f"{provider} {current_model}: timeout"
+                                print(f"⚠️ [{current_model}] 請求超時，切換備援模型...")
+                            except requests.exceptions.ConnectionError:
+                                last_error = f"{provider} {current_model}: connection error"
+                                print(f"⚠️ [{current_model}] 網路連線失敗，切換備援模型...")
+                            except Exception as exc:
+                                last_error = f"{provider} {current_model}: {type(exc).__name__}"
+                                print(f"⚠️ [{current_model}] 回應處理失敗，切換備援模型...")
 
-                    except requests.exceptions.Timeout:
-                        print(f"⚠️ [{current_model}] 請求超時 (Timeout)，切換備用路線...")
-                        continue
-                    except requests.exceptions.ConnectionError:
-                        print("\n🚨 [LLM 網路錯誤] 無法連線！請檢查學校防火牆或切換手機熱點。")
-                        self.final_sentence = "網路連線失敗"
-                        return
-
-                print(f"\n🚨 [LLM 錯誤] 所有的 2.5 備用模型都失敗了（最後狀態碼: {last_status_code}）。")
+                print(f"\n🚨 [LLM 錯誤] 所有 provider 都失敗：{last_error}")
                 self.final_sentence = "伺服器忙碌中，請稍後再試"
                 
         except Exception as e:
@@ -689,9 +758,9 @@ def main():
     face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)  # ⭐ 新增
     logger.info("MediaPipe 視覺引擎初始化完成")
     
-    # 保留原本的測試模式預設值；若要啟用第一階段與第二階段的真實 Gemini 呼叫，
-    # 請在 .env 設定 GEMINI_USE_REAL_API=1。未設定時不會改變原本的測試流程。
-    gemini_use_real_api = os.getenv("GEMINI_USE_REAL_API", "0").strip().lower() in {
+    # 支援通用 LLM_USE_REAL_API，也保留舊 GEMINI_USE_REAL_API 設定名稱。
+    real_api_setting = os.getenv("LLM_USE_REAL_API", os.getenv("GEMINI_USE_REAL_API", "0"))
+    gemini_use_real_api = real_api_setting.strip().lower() in {
         "1", "true", "yes", "on"
     }
 
@@ -722,27 +791,21 @@ def main():
         history_writer=history_writer,
     )
 
-    # API 驗證（保持不變）
+    # 只顯示本機 provider 設定，不在啟動時發送額外的付費/配額 API 探測請求。
     def _verify_api():
-        import requests as _req
-        key = os.getenv("GEMINI_API_KEY", "").strip()
-        test_models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"]
-        print("\n🔍 [LLM 驗證] 正在確認可用模型...")
-        for m in test_models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
-            try:
-                r = _req.post(url, json={
-                    "contents": [{"parts": [{"text": "hi"}]}],
-                    "generationConfig": {"maxOutputTokens": 5}
-                }, timeout=8)
-                if r.status_code == 200:
-                    print(f"  ✅ [{m}] 可用")
-                    break
-                else:
-                    print(f"  ❌ [{m}] 狀態碼 {r.status_code}")
-            except Exception as e:
-                print(f"  ❌ [{m}] 連線失敗: {e}")
-        print("🔍 [LLM 驗證] 完成\n")
+        if not gemini_use_real_api:
+            return
+        print("\n🔍 [LLM 設定] provider 順序：" + " → ".join(load_provider_order()))
+        if load_cgu_api_key():
+            print("  ✅ CGU API 金鑰已設定，模型順序：" + ", ".join(load_cgu_models()))
+        else:
+            print("  ℹ️ CGU_API_KEY 未設定")
+        if str(os.getenv("GEMINI_API_KEY", "")).strip():
+            print("  ✅ Google AI Studio API 金鑰已設定，優先模型：" + ", ".join(load_gemma_models()))
+            print("  ✅ Gemini 備援模型：" + ", ".join(load_models()))
+        else:
+            print("  ℹ️ GEMINI_API_KEY 未設定")
+        print("  ℹ️ 啟動時不發送探測請求；翻譯時才會呼叫 provider。\n")
     
 
     cap, camera_index, camera_backend = open_camera()
@@ -754,7 +817,8 @@ def main():
         print(f"🚨 {message}")
         logger.error(message)
         return
-    threading.Thread(target=_verify_api, daemon=True).start()
+    if gemini_use_real_api:
+        _verify_api()
 
     cv2.namedWindow('Gesture Recognition Core', cv2.WINDOW_NORMAL)
 

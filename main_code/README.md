@@ -492,17 +492,20 @@ python -m pip install -r requirements.txt
 - `python-dotenv`
 - `torch`
 
-## Gemini
+## LLM 翻譯 API
 
-Gemini 翻譯目前是可選功能。
-
-如果要啟用，需要 `.env`：
+即時翻譯預設依序使用 Google AI Studio 的 Gemma、學校 CGU Gateway 的 `gpt-6-luna`，再使用 Gemini Flash-Lite 備援。金鑰放在專案根目錄的 `.env`，不要提交到 Git。
 
 ```text
-GEMINI_API_KEY=your_api_key
+GEMINI_API_KEY=your_gemini_api_key
+GEMMA_MODELS=gemma-4-26b-a4b-it
+CGU_API_KEY=your_school_cgu_api_key
+CGU_MODELS=gpt-6-luna
+GEMINI_MODELS=gemini-3.5-flash-lite
+LLM_PROVIDER_ORDER=gemma,cgu,gemini
 ```
 
-目前主程式預設可在不啟用 Gemini 的情況下運作。
+`GEMINI_API_KEY` 是 Google AI Studio 金鑰。`CGU_API_KEY` 是學校入口金鑰，程式會透過 `https://air.cgu.edu.tw/cgullmapi/v1` 呼叫學校 Gateway；要啟用 `gpt-6-luna` 備援，必須填入這把學校金鑰。模型清單和 provider 順序都可省略，以程式預設值執行。
 
 ## 交接給 AI 時建議貼的摘要
 
