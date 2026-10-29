@@ -626,8 +626,8 @@ def main():
     # ⭐ 新增：載入 LSTM 模型
     # ========================================
     try:
-        # label_map.json 可能有 43 個「手型標籤」。
-        # 若模型輸出只有 41 類，下面會自動把 _A / _B 後綴合併成同一個最終詞。
+        # label_map.json 的索引順序必須與模型訓練時的 class index 一致。
+        # 若標籤帶有 _A / _B 等後綴，下面會在模型類別數相符時合併成最終詞。
         label_map_path = resource_path("label_map.json")
         with open(label_map_path, "r", encoding="utf-8") as f:
             raw_idx2label = {int(k): v for k, v in json.load(f).items()}
