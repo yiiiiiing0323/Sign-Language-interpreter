@@ -124,6 +124,10 @@ class AStreamFeatureExtractor:
         self.pinch_history = []           # 捏合歷史 (判斷包水餃)
         self.wrist_dist_history_z = []    # 雙手 Z 軸相對距離 (判斷前後交替)
         self.l_wrist_angle_history = []   # 左手腕角度歷史
+        self.pinky_chin_dist_history = []
+        self.left_upper_arm_tap_history = []
+        self.both_hand_vertical_gap_history = []
+        self.both_hand_size_history = []
 
         # 新增：時間戳記相關變數（解決 FPS 問題）=====
         self.left_wrist_pos_history = []   # ⭐ 格式：[(timestamp, x, y, z), ...]
@@ -150,6 +154,8 @@ class AStreamFeatureExtractor:
             'l_hand_size_history', 'index_flap_history', 'pinch_history',
             'wrist_dist_history_z', 'l_wrist_angle_history',
             'left_wrist_pos_history', 'right_wrist_pos_history',
+            'pinky_chin_dist_history', 'left_upper_arm_tap_history',
+            'both_hand_vertical_gap_history', 'both_hand_size_history',
         )
         for name in history_names:
             getattr(self, name).clear()
@@ -182,6 +188,8 @@ class AStreamFeatureExtractor:
             'dist_HAND_8_LEFT_EAR': 99.0,   
             'dist_HAND_8_RIGHT_EAR': 99.0,  
             'dist_HAND_0_POSE_CHIN': 99.0,  
+            'dist_HAND_8_POSE_CHIN': 99.0,
+            'dist_HAND_20_POSE_CHIN': 99.0,
             
             # 🟢 新增：臉部器官距離 (V分類專用)
             'dist_HAND_FACE_MOUTH': 99.0,
@@ -195,6 +203,7 @@ class AStreamFeatureExtractor:
             'dist_LEFT_HAND_8_FACE_CHEEK_L': 99.0, 
             'dist_LEFT_HAND_8_TEMPLE_L': 99.0,     
             'dist_RIGHT_HAND_8_TEMPLE_R': 99.0,
+            'dist_RIGHT_HAND_8_FACE_FOREHEAD': 99.0,
             'dist_RIGHT_HAND_8_POSE_THROAT': 99.0,
             
             # 📌 「早上」專屬特徵 (舊有功能保留)
@@ -213,6 +222,8 @@ class AStreamFeatureExtractor:
             'is_L_shape_HAND': False,
             'is_V_shape_HAND': False,
             'is_thumb_extended_HAND': False,
+            'is_zero_shape_HAND': False,
+            'is_pinky_only_HAND': False,
             
             # 🟢 新增：單手細部形狀 (V分類與再見專用)
             'is_flat_HAND': False,
@@ -264,6 +275,10 @@ class AStreamFeatureExtractor:
             'detect_circle_RIGHT_HAND': False,            
             'detect_circle_LEFT_HAND': False,
             'detect_tap_HAND': False,
+            'detect_tap_PINKY_CHIN': False,
+            'detect_tap_LEFT_HAND_RIGHT_ARM': False,
+            'detect_repeating_vertical_tap_BOTH_HANDS': False,
+            'detect_repeating_push_BOTH_HANDS': False,
             'detect_small_move_outwards_RIGHT_HAND': False, 
             
             # 🟢 新增：其他動態特徵 (V分類與再見)
@@ -304,6 +319,7 @@ class AStreamFeatureExtractor:
             'dist_LEFT_HAND_0_POSE_CHEST': 99.0,          
             'palms_facing_in_BOTH_HANDS': False,          
             'palm_facing_in_LEFT_HAND': False,            
+            'palm_facing_right_LEFT_HAND': False,
             'palm_facing_up_LEFT_HAND': False,            
             'is_index_BOTH_HANDS': False,                 
             'detect_draw_square_BOTH_HANDS': False,       
@@ -375,6 +391,7 @@ class AStreamFeatureExtractor:
             'dist_HAND_POSE_SHOULDER': 99.0,          
             'dist_HAND_POSE_SHOULDER_RIGHT': 99.0,    
             'dist_RIGHT_HAND_LEFT_UPPER_ARM': 99.0,   
+            'dist_LEFT_HAND_RIGHT_UPPER_ARM': 99.0,
             'dist_RIGHT_HAND_BACK_LEFT_PALM': 99.0,   
             'dist_RIGHT_HAND_LEFT_FOREARM': 99.0,     
 
@@ -597,6 +614,10 @@ class AStreamFeatureExtractor:
                 current_features['is_V_shape_RIGHT_HAND'] = current_features['is_V_shape_HAND']
                 current_features['is_L_shape_HAND'] = thumb_open and index_open and not middle_open and not ring_open and not pinky_open
                 current_features['is_thumb_extended_HAND'] = bool(thumb_open)
+                current_features['is_pinky_only_HAND'] = (
+                    pinky_open and
+                    not thumb_open and not index_open and not middle_open and not ring_open
+                )
 
                 # 🟢 新增：單手細節特徵對應
                 current_features['is_flat_HAND'] = current_features['is_open_HAND']
@@ -629,6 +650,17 @@ class AStreamFeatureExtractor:
                 current_features['is_pinch_HAND'] = dist_thumb_index < 0.05
                 current_features['is_pinch_RIGHT_HAND'] = current_features['is_pinch_HAND']
                 current_features['is_pinch_all_HAND'] = current_features['is_pinch_HAND'] and not middle_open
+                nearest_other_tip = min(
+                    calculate_dist_3d(thumb_tip, hand_lms[8]),
+                    calculate_dist_3d(thumb_tip, hand_lms[12]),
+                    calculate_dist_3d(thumb_tip, hand_lms[16]),
+                    calculate_dist_3d(thumb_tip, hand_lms[20]),
+                )
+                current_features['is_zero_shape_HAND'] = (
+                    nearest_other_tip < 0.07 and
+                    not index_open and not middle_open and
+                    not ring_open and not pinky_open
+                )
                 current_features['is_C_shape_HAND'] = thumb_open and index_open and not middle_open and dist_thumb_index > 0.05
                 current_features['is_C_shape_RIGHT_HAND'] = current_features['is_C_shape_HAND']
                 current_features['is_crossed_fingers_HAND'] = index_open and middle_open and calculate_dist_3d(hand_lms[8], hand_lms[12]) < 0.03
@@ -659,6 +691,8 @@ class AStreamFeatureExtractor:
                 current_features['dist_HAND_8_LEFT_EAR'] = round(calculate_dist_2d(index_tip, left_ear) / shoulder_width, 3)
                 current_features['dist_HAND_8_RIGHT_EAR'] = round(calculate_dist_2d(index_tip, right_ear) / shoulder_width, 3)
                 current_features['dist_HAND_0_POSE_CHIN'] = round(calculate_dist_2d(wrist, chin_point) / shoulder_width, 3)
+                current_features['dist_HAND_8_POSE_CHIN'] = round(calculate_dist_2d(index_tip, chin_point) / shoulder_width, 3)
+                current_features['dist_HAND_20_POSE_CHIN'] = round(calculate_dist_2d(hand_lms[20], chin_point) / shoulder_width, 3)
 
                 dist_wrist_nose = round(calculate_dist_2d(wrist, nose) / shoulder_width, 3)
                 current_features['dist_RIGHT_HAND_0_POSE_NOSE'] = dist_wrist_nose
@@ -687,6 +721,7 @@ class AStreamFeatureExtractor:
 
                 # 🌟 新增：針對額頭、側臉、左胸的距離計算
                 current_features['dist_RIGHT_HAND_4_FACE_FOREHEAD'] = round(calculate_dist_2d(hand_lms[4], forehead_point) / shoulder_width, 3)
+                current_features['dist_RIGHT_HAND_8_FACE_FOREHEAD'] = round(calculate_dist_2d(index_tip, forehead_point) / shoulder_width, 3)
                 current_features['dist_RIGHT_HAND_0_FACE_SIDE'] = round(calculate_dist_2d(wrist, face_side_point) / shoulder_width, 3)
                 current_features['dist_RIGHT_HAND_0_LEFT_CHEST'] = round(calculate_dist_2d(wrist, left_chest_point) / shoulder_width, 3)
                 # dist_RIGHT_HAND_8_POSE_NOSE 可以直接用 dist_HAND_8_FACE_1 代替
@@ -742,6 +777,17 @@ class AStreamFeatureExtractor:
 
                 self.chest_dist_history.append(current_features['dist_HAND_8_POSE_CHEST'])
                 if len(self.chest_dist_history) > 30: self.chest_dist_history.pop(0)
+
+                self.pinky_chin_dist_history.append(current_features['dist_HAND_20_POSE_CHIN'])
+                if len(self.pinky_chin_dist_history) > 20: self.pinky_chin_dist_history.pop(0)
+                if len(self.pinky_chin_dist_history) >= 10:
+                    pinky_hist = self.pinky_chin_dist_history
+                    pinky_min_idx = int(np.argmin(pinky_hist))
+                    if 2 < pinky_min_idx < len(pinky_hist) - 3:
+                        current_features['detect_tap_PINKY_CHIN'] = (
+                            pinky_hist[0] - pinky_hist[pinky_min_idx] > 0.015 and
+                            pinky_hist[-1] - pinky_hist[pinky_min_idx] > 0.015
+                        )
 
                 # 右手腕 Y 軸歷史（單手用：早上判定）
                 self.wrist_y_history.append(wrist.y)
@@ -1114,6 +1160,21 @@ class AStreamFeatureExtractor:
                     
                     r_wrist = r_lms[0]
                     l_wrist = l_lms[0]
+
+                    vertical_gap = r_wrist.y - l_wrist.y
+                    self.both_hand_vertical_gap_history.append(vertical_gap)
+                    if len(self.both_hand_vertical_gap_history) > 20:
+                        self.both_hand_vertical_gap_history.pop(0)
+                    if len(self.both_hand_vertical_gap_history) >= 12:
+                        gap_hist = self.both_hand_vertical_gap_history
+                        gap_delta = np.diff(gap_hist)
+                        gap_turns = sum(
+                            1 for i in range(1, len(gap_delta))
+                            if gap_delta[i - 1] * gap_delta[i] < 0
+                        )
+                        current_features['detect_repeating_vertical_tap_BOTH_HANDS'] = (
+                            gap_turns >= 2 and max(gap_hist) - min(gap_hist) > 0.025
+                        )
                     
                     l_thumb_tip = l_lms[4]
                     l_thumb_mcp = l_lms[2]
@@ -1212,6 +1273,7 @@ class AStreamFeatureExtractor:
                     
                     # 🟢 新增：雙手掌心朝向
                     current_features['palm_facing_in_LEFT_HAND'] = abs(l_lms[2].x - l_lms[17].x) < 0.30
+                    current_features['palm_facing_right_LEFT_HAND'] = l_lms[2].x > l_lms[17].x
                     current_features['palm_facing_out_LEFT_HAND'] = l_lms[17].z > l_lms[5].z
                     current_features['palms_facing_in_BOTH_HANDS'] = current_features['palm_facing_in_RIGHT_HAND'] and current_features['palm_facing_in_LEFT_HAND']
                     current_features['palms_facing_out_BOTH_HANDS'] = current_features['palm_facing_out_RIGHT_HAND'] and current_features['palm_facing_out_LEFT_HAND']
@@ -1320,6 +1382,21 @@ class AStreamFeatureExtractor:
                     left_upper_arm = Point2D((shoulder_l.x + p_lms[13].x) / 2, (shoulder_l.y + p_lms[13].y) / 2)
                     current_features['dist_RIGHT_HAND_LEFT_UPPER_ARM'] = round(calculate_dist_2d(r_wrist, left_upper_arm) / shoulder_width, 3)
 
+                    right_upper_arm = Point2D((shoulder_r.x + p_lms[14].x) / 2, (shoulder_r.y + p_lms[14].y) / 2)
+                    left_wrist_right_arm_dist = calculate_dist_2d(l_wrist, right_upper_arm) / shoulder_width
+                    current_features['dist_LEFT_HAND_RIGHT_UPPER_ARM'] = round(left_wrist_right_arm_dist, 3)
+                    self.left_upper_arm_tap_history.append(left_wrist_right_arm_dist)
+                    if len(self.left_upper_arm_tap_history) > 20:
+                        self.left_upper_arm_tap_history.pop(0)
+                    if len(self.left_upper_arm_tap_history) >= 10:
+                        arm_hist = self.left_upper_arm_tap_history
+                        arm_min_idx = int(np.argmin(arm_hist))
+                        if 2 < arm_min_idx < len(arm_hist) - 3:
+                            current_features['detect_tap_LEFT_HAND_RIGHT_ARM'] = (
+                                arm_hist[0] - arm_hist[arm_min_idx] > 0.015 and
+                                arm_hist[-1] - arm_hist[arm_min_idx] > 0.015
+                            )
+
                     left_palm_back = Point2D((l_lms[0].x + l_lms[9].x) / 2, (l_lms[0].y + l_lms[9].y) / 2)
                     current_features['dist_RIGHT_HAND_BACK_LEFT_PALM'] = round(calculate_dist_2d(r_wrist, left_palm_back) / shoulder_width, 3)
 
@@ -1422,6 +1499,20 @@ class AStreamFeatureExtractor:
                     l_size = get_hand_size(l_lms)
                     self.l_hand_size_history.append(l_size)
                     if len(self.l_hand_size_history) > 15: self.l_hand_size_history.pop(0)
+                    combined_hand_size = (get_hand_size(r_lms) + l_size) / 2.0
+                    self.both_hand_size_history.append(combined_hand_size)
+                    if len(self.both_hand_size_history) > 20:
+                        self.both_hand_size_history.pop(0)
+                    if len(self.both_hand_size_history) >= 12:
+                        size_hist = self.both_hand_size_history
+                        size_delta = np.diff(size_hist)
+                        size_turns = sum(
+                            1 for i in range(1, len(size_delta))
+                            if size_delta[i - 1] * size_delta[i] < 0
+                        )
+                        current_features['detect_repeating_push_BOTH_HANDS'] = (
+                            size_turns >= 2 and max(size_hist) - min(size_hist) > 0.012
+                        )
                     if len(self.l_hand_size_history) >= 10 and len(self.hand_size_history) >= 10:
                         r_diff = self.hand_size_history[-1] - self.hand_size_history[0]
                         l_diff = self.l_hand_size_history[-1] - self.l_hand_size_history[0]
@@ -1475,6 +1566,9 @@ class AStreamFeatureExtractor:
                     self.wrist_dist_history_z.clear()
                     self.l_hand_size_history.clear()
                     self.l_wrist_angle_history.clear()
+                    self.left_upper_arm_tap_history.clear()
+                    self.both_hand_vertical_gap_history.clear()
+                    self.both_hand_size_history.clear()
 
         else:
             self.reset_motion_history()
