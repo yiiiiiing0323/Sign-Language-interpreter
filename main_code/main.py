@@ -170,11 +170,13 @@ class TranslationWorker:
         use_real_api=False,
         text_to_gloss_converter=None,
         history_writer=None,
+        candidate_merger=None,
     ):
         self.use_real_api = use_real_api
         self.api_key = api_key
         self.text_to_gloss_converter = text_to_gloss_converter
         self.history_writer = history_writer
+        self.candidate_merger = candidate_merger
         self.word_buffer = []
         # 跟 word_buffer 一一對應，但保留 _A/_B/_N/_S 尾碼，只給複合詞比對用。
         # word_buffer 本身維持乾淨（顯示、送 Gemini 用），不受這個影響。
@@ -211,7 +213,7 @@ class TranslationWorker:
         3. 問候語與疑問句：轉換成道地口語（例：["早上","平安","好"] -> 早安，你好。["你","吃飯","已經"] -> 你吃過飯了嗎？）
         4. 語氣與否定：正確處理強調詞與否定語序（例：["爸爸","生氣","很"] -> 爸爸很生氣。["我","不是"] -> 不是我。）
         5. 人稱與狀態句：補上必要的「是」等動詞（例：["我們","學生"] -> 我們是學生。）
-        6. 混淆詞：遇到方括號/斜線標記的候選詞（如 [A/B]），依上下文只選一個，絕對不保留括號與斜線（例：["你好","[先生/謝謝]"] -> 你好，先生。["[捷運/火車]","搭","我","學校","去"] -> 我搭捷運去學校。）
+        6. 混淆詞：遇到方括號/斜線標記的候選詞（如 [A/B/C]），依上下文只選一個，絕對不保留括號與斜線（例：["你好","[先生/謝謝]"] -> 你好，先生。["[捷運/火車]","搭","我","學校","去"] -> 我搭捷運去學校。）
         7. 邊界條件：語意極不完整時仍輸出最自然的短句，不要拒答，也不要腦補不存在的背景資訊。
 
         【輸出格式】
@@ -593,6 +595,12 @@ class TranslationWorker:
 
             if no_hands_trigger or timeout_trigger:
                 words_to_translate = list(self.word_buffer)
+                if self.candidate_merger is not None:
+                    merged_words = self.candidate_merger(words_to_translate)
+                    if merged_words != words_to_translate:
+                        words_to_translate = merged_words
+                        self.word_buffer = list(merged_words)
+                        print(f"[翻譯雷達] 合併混淆候選: {self.word_buffer}")
                 original_gloss_sequence = list(self.raw_word_buffer or self.word_buffer)
                 self.last_camera_gloss_sequence = list(words_to_translate)
                 self.last_camera_raw_gloss_sequence = list(original_gloss_sequence)
@@ -789,6 +797,7 @@ def main():
         use_real_api=gemini_use_real_api,
         text_to_gloss_converter=text_to_gloss_converter,
         history_writer=history_writer,
+        candidate_merger=decision_fusion.merge_queue_confusable_candidates,
     )
 
     # 只顯示本機 provider 設定，不在啟動時發送額外的付費/配額 API 探測請求。
@@ -989,6 +998,12 @@ def main():
                             now=current_time,
                         )
                         print(f"[複合詞] {'+'.join(compound_match.pattern)} -> {compound_match.output}")
+                    merged_queue = decision_fusion.merge_queue_confusable_candidates(
+                        translator.word_buffer
+                    )
+                    if merged_queue != translator.word_buffer:
+                        translator.word_buffer = merged_queue
+                        print(f"[翻譯雷達] 合併混淆候選: {translator.word_buffer}")
                     last_word = final_word
                     last_word_time = current_time
                     print(f"✅ 新增詞彙: {final_word} (來源: {source})")
@@ -1073,7 +1088,22 @@ def main():
             time.sleep(5)
             break
 
+    # 釋放攝影機與 MediaPipe 資源，避免程式結束後仍占用鏡頭或保留
+    # MediaPipe 的底層圖形/推論資源。這只會在主迴圈結束時執行，
+    # 不會改變每一幀的偵測與辨識流程。
     cap.release()
+    for processor_name, processor in (
+        ("pose", pose),
+        ("hands", hands),
+        ("face_mesh", face_mesh),
+    ):
+        try:
+            processor.close()
+            logger.info("MediaPipe %s 資源已釋放", processor_name)
+        except Exception:
+            # 清理階段不應覆蓋主迴圈原本的結果；若某個 processor
+            # 已由 MediaPipe 自行釋放，記錄後繼續清理其他資源即可。
+            logger.exception("MediaPipe %s 資源釋放失敗", processor_name)
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
