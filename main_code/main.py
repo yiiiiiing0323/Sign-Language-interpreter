@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import sys
 sys.dont_write_bytecode = True
 
@@ -47,7 +48,9 @@ from fusion import DecisionFusion
 from compound_phrase import CompoundPhraseResolver
 from core.gloss_history import AppendOnlyGlossHistory
 from core.gemini_models import (
-    GEMMA_REQUEST_TIMEOUT,
+    GEMINI_MAX_ATTEMPTS,
+    GEMINI_RETRY_BACKOFF_SECONDS,
+    GEMINI_RETRY_STATUS_CODES,
     MODEL_REQUEST_TIMEOUT,
     TOTAL_REQUEST_TIMEOUT,
     configure_model_thinking,
@@ -213,8 +216,9 @@ class TranslationWorker:
         3. 問候語與疑問句：轉換成道地口語（例：["早上","平安","好"] -> 早安，你好。["你","吃飯","已經"] -> 你吃過飯了嗎？）
         4. 語氣與否定：正確處理強調詞與否定語序（例：["爸爸","生氣","很"] -> 爸爸很生氣。["我","不是"] -> 不是我。）
         5. 人稱與狀態句：補上必要的「是」等動詞（例：["我們","學生"] -> 我們是學生。）
-        6. 混淆詞：遇到方括號/斜線標記的候選詞（如 [A/B/C]），依上下文只選一個，絕對不保留括號與斜線（例：["你好","[先生/謝謝]"] -> 你好，先生。["[捷運/火車]","搭","我","學校","去"] -> 我搭捷運去學校。）
-        7. 邊界條件：語意極不完整時仍輸出最自然的短句，不要拒答，也不要腦補不存在的背景資訊。
+        6. 混淆詞：方括號/斜線（如 [A/B/C]）表示同一個辨識位置的候選，不代表每組都一定要保留。先以整句語意、語法與常識一起判斷；可以從每組選一個，也可以丟棄整組候選。若某組的所有選項都會讓句子出現無關、矛盾或不合邏輯的資訊，就把該組視為辨識雜訊並刪除。優先輸出較短但完整、自然的句子，不要為了使用所有候選而硬湊日期、數字、地點或身分關係。絕對不保留括號與斜線（例：["你好","[先生/謝謝]"] -> 你好，先生。["[捷運/火車]","搭","我","學校","去"] -> 我搭捷運去學校。["[我/星期六]","[是/四]","[聾/聾人]"] -> 我是聾人。）
+        7. 全句一致性：完成初稿後，重新檢查每個詞是否真的支持同一個意思。若加入候選詞會使句子變成荒謬或互相衝突的敘述，刪除該詞或整個候選組；不要把孤立的星期、日期或數字自動當成時間資訊。候選辨識不確定時，以語意明確且通順的短句優先。
+        8. 邊界條件：語意極不完整時仍輸出最自然的短句，不要拒答，也不要腦補不存在的背景資訊。
 
         【輸出格式】
         只能回傳 JSON 物件，格式為 {"sentence": "翻譯後的繁體中文句子"}。
@@ -516,59 +520,113 @@ class TranslationWorker:
                                 print(f"⚠️ [CGU Gateway/{current_model}] {last_error}，切換下一個模型...")
                                 continue
 
-                    if provider in {"gemma", "gemini"}:
-                        if not gemini_api_key:
+                    if provider == "gemma":
+                        # The project's Gemma is a school-hosted model exposed
+                        # by MercuryAPI. Keep it off Google's endpoint so it
+                        # does not consume Google AI Studio quota.
+                        provider_api_key = load_cgu_api_key()
+                        if not provider_api_key:
                             continue
-                        current_models = load_gemma_models() if provider == "gemma" else fallback_models
-                        for current_model in current_models:
+                        for current_model in load_gemma_models():
                             remaining_time = request_deadline - time.monotonic()
                             if remaining_time <= 0:
-                                print("⚠️ Gemini 備援翻譯已達總等待上限，停止本次請求。")
                                 break
+                            try:
+                                result = cgu_generate_json(
+                                    api_key=provider_api_key,
+                                    model=current_model,
+                                    instructions=self.system_instruction,
+                                    input_text=f"請翻譯以下手語單字：{words_to_translate}",
+                                    schema_name="sign_language_translation",
+                                    schema={
+                                        "type": "object",
+                                        "properties": {"sentence": {"type": "string"}},
+                                        "required": ["sentence"],
+                                        "additionalProperties": False,
+                                    },
+                                    timeout=min(CGU_REQUEST_TIMEOUT, remaining_time),
+                                    max_output_tokens=200,
+                                )
+                                sentence = str(result.get("sentence", "")).strip()
+                                if not sentence:
+                                    raise CGUGatewayError("Gemma Gateway 回傳的句子是空白")
+                                finish_translation(sentence, provider, current_model)
+                                return
+                            except CGUGatewayError as exc:
+                                last_error = str(exc)
+                                print(f"⚠️ [Gemma/MercuryAPI/{current_model}] {last_error}，切換 CGU 備援...")
+                                continue
+
+                    if provider == "gemini":
+                        if not gemini_api_key:
+                            continue
+                        current_models = fallback_models
+                        for current_model in current_models:
                             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent"
                             headers = {
                                 "Content-Type": "application/json",
                                 "x-goog-api-key": gemini_api_key,
                             }
-                            try:
-                                configure_model_thinking(payload, current_model)
-                                response = requests.post(
-                                    url,
-                                    headers=headers,
-                                    json=payload,
-                                    timeout=min(
-                                        GEMMA_REQUEST_TIMEOUT if provider == "gemma" else MODEL_REQUEST_TIMEOUT,
-                                        remaining_time,
-                                    ),
-                                )
-                                if response.status_code != 200:
-                                    last_error = f"{provider} {current_model}: HTTP {response.status_code}"
-                                    detail = gemini_error_detail(response, gemini_api_key)
-                                    suffix = f"；{detail}" if detail else ""
-                                    print(f"⚠️ [{current_model}] 狀態碼 {response.status_code}{suffix}，切換備援模型...")
-                                    continue
-
-                                data = response.json()
-                                raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                            for attempt in range(1, GEMINI_MAX_ATTEMPTS + 1):
+                                remaining_time = request_deadline - time.monotonic()
+                                if remaining_time <= 0:
+                                    print("⚠️ Gemini 備援翻譯已達總等待上限，停止本次請求。")
+                                    break
                                 try:
-                                    parsed = json.loads(raw_text)
-                                    sentence = str(parsed.get("sentence", "")).strip()
-                                except (json.JSONDecodeError, AttributeError):
-                                    sentence = raw_text
-                                if not sentence:
-                                    last_error = f"Gemini {current_model}: 空白回應"
-                                    continue
-                                finish_translation(sentence, provider, current_model)
-                                return
-                            except requests.exceptions.Timeout:
-                                last_error = f"{provider} {current_model}: timeout"
-                                print(f"⚠️ [{current_model}] 請求超時，切換備援模型...")
-                            except requests.exceptions.ConnectionError:
-                                last_error = f"{provider} {current_model}: connection error"
-                                print(f"⚠️ [{current_model}] 網路連線失敗，切換備援模型...")
-                            except Exception as exc:
-                                last_error = f"{provider} {current_model}: {type(exc).__name__}"
-                                print(f"⚠️ [{current_model}] 回應處理失敗，切換備援模型...")
+                                    configure_model_thinking(payload, current_model)
+                                    response = requests.post(
+                                        url,
+                                        headers=headers,
+                                        json=payload,
+                                        timeout=min(
+                                            MODEL_REQUEST_TIMEOUT,
+                                            remaining_time,
+                                        ),
+                                    )
+                                    if response.status_code != 200:
+                                        last_error = f"{provider} {current_model}: HTTP {response.status_code}"
+                                        detail = gemini_error_detail(response, gemini_api_key)
+                                        suffix = f"；{detail}" if detail else ""
+                                        retryable = response.status_code in GEMINI_RETRY_STATUS_CODES
+                                        if retryable and attempt < GEMINI_MAX_ATTEMPTS:
+                                            print(f"⚠️ [{current_model}] 狀態碼 {response.status_code}{suffix}，短暫等待後重試...")
+                                            time.sleep(min(GEMINI_RETRY_BACKOFF_SECONDS * attempt, max(0.0, request_deadline - time.monotonic())))
+                                            continue
+                                        print(f"⚠️ [{current_model}] 狀態碼 {response.status_code}{suffix}，切換備援模型...")
+                                        break
+
+                                    data = response.json()
+                                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                                    try:
+                                        parsed = json.loads(raw_text)
+                                        sentence = str(parsed.get("sentence", "")).strip()
+                                    except (json.JSONDecodeError, AttributeError):
+                                        sentence = raw_text
+                                    if not sentence:
+                                        last_error = f"{provider} {current_model}: 空白回應"
+                                        break
+                                    finish_translation(sentence, provider, current_model)
+                                    return
+                                except requests.exceptions.Timeout:
+                                    last_error = f"{provider} {current_model}: timeout"
+                                    if attempt < GEMINI_MAX_ATTEMPTS and time.monotonic() < request_deadline:
+                                        print(f"⚠️ [{current_model}] 請求超時，短暫等待後重試 ({attempt}/{GEMINI_MAX_ATTEMPTS})...")
+                                        time.sleep(min(GEMINI_RETRY_BACKOFF_SECONDS * attempt, max(0.0, request_deadline - time.monotonic())))
+                                        continue
+                                    print(f"⚠️ [{current_model}] 請求超時，切換備援模型...")
+                                    break
+                                except requests.exceptions.ConnectionError:
+                                    last_error = f"{provider} {current_model}: connection error"
+                                    if attempt < GEMINI_MAX_ATTEMPTS and time.monotonic() < request_deadline:
+                                        print(f"⚠️ [{current_model}] 網路連線失敗，短暫等待後重試 ({attempt}/{GEMINI_MAX_ATTEMPTS})...")
+                                        time.sleep(min(GEMINI_RETRY_BACKOFF_SECONDS * attempt, max(0.0, request_deadline - time.monotonic())))
+                                        continue
+                                    print(f"⚠️ [{current_model}] 網路連線失敗，切換備援模型...")
+                                    break
+                                except Exception as exc:
+                                    last_error = f"{provider} {current_model}: {type(exc).__name__}"
+                                    print(f"⚠️ [{current_model}] 回應處理失敗，切換備援模型...")
+                                    break
 
                 print(f"\n🚨 [LLM 錯誤] 所有 provider 都失敗：{last_error}")
                 self.final_sentence = "伺服器忙碌中，請稍後再試"
@@ -806,14 +864,14 @@ def main():
             return
         print("\n🔍 [LLM 設定] provider 順序：" + " → ".join(load_provider_order()))
         if load_cgu_api_key():
-            print("  ✅ CGU API 金鑰已設定，模型順序：" + ", ".join(load_cgu_models()))
+            print("  ✅ MercuryAPI 金鑰已設定，學校 Gemma 模型：" + ", ".join(load_gemma_models()))
+            print("  ✅ CGU 備援模型順序：" + ", ".join(load_cgu_models()))
         else:
-            print("  ℹ️ CGU_API_KEY 未設定")
+            print("  ℹ️ CGU_API_KEY 未設定（學校 Gemma/CGU provider 會跳過）")
         if str(os.getenv("GEMINI_API_KEY", "")).strip():
-            print("  ✅ Google AI Studio API 金鑰已設定，優先模型：" + ", ".join(load_gemma_models()))
-            print("  ✅ Gemini 備援模型：" + ", ".join(load_models()))
+            print("  ✅ Google AI Studio API 金鑰已設定，Gemini 備援模型：" + ", ".join(load_models()))
         else:
-            print("  ℹ️ GEMINI_API_KEY 未設定")
+            print("  ℹ️ GEMINI_API_KEY 未設定（最後 Gemini provider 會跳過）")
         print("  ℹ️ 啟動時不發送探測請求；翻譯時才會呼叫 provider。\n")
     
 

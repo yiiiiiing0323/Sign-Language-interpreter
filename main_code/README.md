@@ -494,18 +494,19 @@ python -m pip install -r requirements.txt
 
 ## LLM 翻譯 API
 
-即時翻譯預設依序使用 Google AI Studio 的 Gemma、學校 CGU Gateway 的 `gpt-6-luna`，再使用 Gemini Flash-Lite 備援。金鑰放在專案根目錄的 `.env`，不要提交到 Git。
+即時翻譯預設依序使用學校 MercuryAPI 的 `gemma-4-26b-a4b-it`（不消耗 Google 額度）、學校 CGU Gateway 的 `gpt-6-luna`，再使用 Google Gemini Flash-Lite 備援。金鑰放在專案根目錄的 `.env`，不要提交到 Git。
 
 ```text
 GEMINI_API_KEY=your_gemini_api_key
 GEMMA_MODELS=gemma-4-26b-a4b-it
 CGU_API_KEY=your_school_cgu_api_key
+CGU_API_BASE_URL=https://air.cgu.edu.tw/mercuryapi/v1
 CGU_MODELS=gpt-6-luna
 GEMINI_MODELS=gemini-3.5-flash-lite
 LLM_PROVIDER_ORDER=gemma,cgu,gemini
 ```
 
-`GEMINI_API_KEY` 是 Google AI Studio 金鑰。`CGU_API_KEY` 是學校入口金鑰，程式會透過 `https://air.cgu.edu.tw/cgullmapi/v1` 呼叫學校 Gateway；要啟用 `gpt-6-luna` 備援，必須填入這把學校金鑰。模型清單和 provider 順序都可省略，以程式預設值執行。
+`GEMINI_API_KEY` 是最後備援用的 Google AI Studio 金鑰。`CGU_API_KEY` 是學校 MercuryAPI 入口金鑰；學校 Gemma 與 `gpt-6-luna` 都透過 `https://air.cgu.edu.tw/mercuryapi/v1` 的 OpenAI 相容介面呼叫。模型清單和 provider 順序都可省略，以程式預設值執行。
 
 ## 交接給 AI 時建議貼的摘要
 

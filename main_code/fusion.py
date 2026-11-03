@@ -70,8 +70,9 @@ class DecisionFusion:
             ["直", "跑", "二"],
             ["走", "二"],
             ["拿", "地方"],
-            ["是", "四"],
+            ["是", "四", "聾"],
             ["到", "跑", "四"],
+            ["我", "星期六"],
         ]
         
         # 建立反向查詢表
@@ -143,6 +144,55 @@ class DecisionFusion:
     def merge_confusable_words(self, words):
         """將多個混淆詞打包"""
         return format_candidates(words)
+
+    def merge_queue_confusable_candidates(self, words):
+        """Merge a contiguous queue run from one confusable group.
+
+        Per-frame fusion can only compare one AI result with one B-stream
+        result. This pass also handles ambiguity that appears across frames,
+        for example 跑、到、跑、四 -> [到/跑/四].
+        """
+        source = [str(word).strip() for word in (words or []) if str(word).strip()]
+        if len(source) < 2:
+            return source
+
+        groups = [
+            tuple(dict.fromkeys(canonical_word(member) for member in group))
+            for group in self.confusable_groups
+        ]
+        result = []
+        index = 0
+
+        while index < len(source):
+            best = None
+            for group_index, group in enumerate(groups):
+                group_set = set(group)
+                cursor = index
+                seen = set()
+                while cursor < len(source):
+                    overlap = set(word_alternatives(source[cursor])) & group_set
+                    if not overlap:
+                        break
+                    seen.update(overlap)
+                    cursor += 1
+
+                if len(seen) < 2:
+                    continue
+                score = (len(seen), cursor - index, -group_index)
+                if best is None or score > best[0]:
+                    best = (score, group, cursor, seen)
+
+            if best is None:
+                result.append(source[index])
+                index += 1
+                continue
+
+            _, group, cursor, seen = best
+            ordered_members = [member for member in group if member in seen]
+            result.append(format_candidates(ordered_members))
+            index = cursor
+
+        return result
     
     
     def _finish(self, word, source, confidence, immediate=False, raw_word=None):
