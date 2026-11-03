@@ -14,13 +14,18 @@ UNAVAILABLE_MODELS = frozenset({
     "gemini-2.5-flash-lite",
 })
 
-TOTAL_REQUEST_TIMEOUT = 13.0
-GEMMA_REQUEST_TIMEOUT = 4.0
-MODEL_REQUEST_TIMEOUT = 9.0
+# Google AI Studio can take several seconds to wake a model.  Keep the total
+# budget bounded, but do not treat the old 4-second read timeout as a failure.
+TOTAL_REQUEST_TIMEOUT = 32.0
+GEMMA_REQUEST_TIMEOUT = 12.0
+MODEL_REQUEST_TIMEOUT = 12.0
+GEMINI_MAX_ATTEMPTS = 2
+GEMINI_RETRY_BACKOFF_SECONDS = 0.6
+GEMINI_RETRY_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 
 def load_gemma_models() -> List[str]:
-    """Load the first-choice Gemma model(s) for the Google AI Studio API."""
+    """Load the first-choice school-hosted Gemma model(s)."""
     configured = os.getenv("GEMMA_MODELS", "")
     if not configured.strip():
         return list(DEFAULT_GEMMA_MODELS)

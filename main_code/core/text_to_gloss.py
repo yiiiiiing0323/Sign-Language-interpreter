@@ -28,7 +28,9 @@ except ImportError:  # pragma: no cover - requirements.txt includes python-doten
 from core.word_normalization import word_alternatives
 from core.gemini_models import (
     DEFAULT_MODELS,
-    GEMMA_REQUEST_TIMEOUT,
+    GEMINI_MAX_ATTEMPTS,
+    GEMINI_RETRY_BACKOFF_SECONDS,
+    GEMINI_RETRY_STATUS_CODES,
     MODEL_REQUEST_TIMEOUT,
     TOTAL_REQUEST_TIMEOUT,
     configure_model_thinking,
@@ -371,6 +373,42 @@ ASPECT_CONTINUOUS、NEG_NOT、NEG_NONE、NEG_DONT、NEG_CANNOT、完成、進行
                 errors.append("已達 LLM provider 備援總等待上限")
                 break
 
+            if provider == "gemma":
+                # gemma-4-26b-a4b-it is the school-hosted Gemma model. Route
+                # it through MercuryAPI so this path does not use Google quota.
+                if not cgu_api_key:
+                    continue
+                user_input = payload["contents"][0]["parts"][0]["text"]
+                for model in load_gemma_models():
+                    remaining_time = request_deadline - time.monotonic()
+                    if remaining_time <= 0:
+                        errors.append("已達 Gemma Gateway 備援總等待上限")
+                        break
+                    try:
+                        parsed = cgu_generate_json(
+                            api_key=cgu_api_key,
+                            model=model,
+                            instructions=payload["systemInstruction"]["parts"][0]["text"],
+                            input_text=user_input,
+                            schema_name="traditional_chinese_to_sign_gloss",
+                            schema=cgu_schema,
+                            timeout=min(self.timeout, CGU_REQUEST_TIMEOUT, remaining_time),
+                            session=self.session,
+                            max_output_tokens=300,
+                        )
+                        result = self.validate_result(parsed, sentence)
+                        logger.info(
+                            "text_to_gloss_success provider=%s model=%s gloss_count=%s unsupported=%s",
+                            provider,
+                            model,
+                            len(result["gloss_sequence"]),
+                            len(result["unsupported_words"]),
+                        )
+                        return result
+                    except Exception as exc:
+                        errors.append(f"{provider}/{model}: {exc}")
+                        continue
+
             if provider == "cgu":
                 if not cgu_api_key:
                     continue
@@ -405,49 +443,60 @@ ASPECT_CONTINUOUS、NEG_NOT、NEG_NONE、NEG_DONT、NEG_CANNOT、完成、進行
                         errors.append(f"{provider}/{model}: {exc}")
                         continue
 
-            if provider in {"gemma", "gemini"}:
-                current_models = load_gemma_models() if provider == "gemma" else self.models
+            if provider == "gemini":
+                current_models = self.models
                 for key_index, api_key in enumerate(self.api_keys, start=1):
                     for model in current_models:
-                        remaining_time = request_deadline - time.monotonic()
-                        if remaining_time <= 0:
-                            errors.append("已達 Gemini 備援翻譯總等待上限")
-                            break
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-                        try:
-                            configure_model_thinking(payload, model)
-                            response = self.session.post(
-                                url,
-                                headers={
-                                    "Content-Type": "application/json",
-                                    "x-goog-api-key": api_key,
-                                },
-                                json=payload,
-                                timeout=min(
-                                    self.timeout,
-                                    GEMMA_REQUEST_TIMEOUT if provider == "gemma" else MODEL_REQUEST_TIMEOUT,
-                                    remaining_time,
-                                ),
-                            )
-                            if response.status_code != 200:
-                                errors.append(f"{provider} key#{key_index}/{model}: HTTP {response.status_code}")
-                                continue
+                        for attempt in range(1, GEMINI_MAX_ATTEMPTS + 1):
+                            remaining_time = request_deadline - time.monotonic()
+                            if remaining_time <= 0:
+                                errors.append("已達 Gemini 備援翻譯總等待上限")
+                                break
+                            try:
+                                configure_model_thinking(payload, model)
+                                response = self.session.post(
+                                    url,
+                                    headers={
+                                        "Content-Type": "application/json",
+                                        "x-goog-api-key": api_key,
+                                    },
+                                    json=payload,
+                                    timeout=min(
+                                        self.timeout,
+                                        MODEL_REQUEST_TIMEOUT,
+                                        remaining_time,
+                                    ),
+                                )
+                                if response.status_code != 200:
+                                    errors.append(f"{provider} key#{key_index}/{model}: HTTP {response.status_code}")
+                                    if response.status_code in GEMINI_RETRY_STATUS_CODES and attempt < GEMINI_MAX_ATTEMPTS:
+                                        time.sleep(min(GEMINI_RETRY_BACKOFF_SECONDS * attempt, max(0.0, request_deadline - time.monotonic())))
+                                        continue
+                                    break
 
-                            data = response.json()
-                            raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                            parsed = json.loads(raw_text)
-                            result = self.validate_result(parsed, sentence)
-                            logger.info(
-                                "text_to_gloss_success provider=%s key_index=%s model=%s gloss_count=%s unsupported=%s",
-                                provider,
-                                key_index,
-                                model,
-                                len(result["gloss_sequence"]),
-                                len(result["unsupported_words"]),
-                            )
-                            return result
-                        except Exception as exc:
-                            errors.append(f"{provider} key#{key_index}/{model}: {type(exc).__name__}")
+                                data = response.json()
+                                raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                                parsed = json.loads(raw_text)
+                                result = self.validate_result(parsed, sentence)
+                                logger.info(
+                                    "text_to_gloss_success provider=%s key_index=%s model=%s gloss_count=%s unsupported=%s",
+                                    provider,
+                                    key_index,
+                                    model,
+                                    len(result["gloss_sequence"]),
+                                    len(result["unsupported_words"]),
+                                )
+                                return result
+                            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+                                errors.append(f"{provider} key#{key_index}/{model}: {type(exc).__name__}")
+                                if attempt < GEMINI_MAX_ATTEMPTS and time.monotonic() < request_deadline:
+                                    time.sleep(min(GEMINI_RETRY_BACKOFF_SECONDS * attempt, max(0.0, request_deadline - time.monotonic())))
+                                    continue
+                                break
+                            except Exception as exc:
+                                errors.append(f"{provider} key#{key_index}/{model}: {type(exc).__name__}")
+                                break
 
         raise TextToGlossError("所有 Text-to-Gloss provider 嘗試皆失敗：" + "; ".join(errors))
 

@@ -4,6 +4,9 @@ import os
 from typing import List
 
 
+# The project's Gemma is hosted by CGU/MercuryAPI and does not use Google
+# quota. Try it first, then the CGU backup model, and finally Google Gemini.
+# An explicit LLM_PROVIDER_ORDER in .env still overrides this default.
 DEFAULT_PROVIDER_ORDER = ("gemma", "cgu", "gemini")
 
 
