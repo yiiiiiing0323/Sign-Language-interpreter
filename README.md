@@ -6,6 +6,7 @@
 ![Status: In-Development](https://img.shields.io/badge/Status-In--Development-yellow)
 
 ### 🎬[三下期末報告影片](https://drive.google.com/file/d/1GofrD0zfCPDhS8rKh7rqyqgFy-iRNPvg/view?usp=sharing)
+### 🎬[四上期中報告影片](https://drive.google.com/file/d/1mqnN0IBt6GqBadvCebBmqAw2f-oqBOyp/view?usp=sharing)
 ### 🎬[四上期末報告影片](https://drive.google.com/file/d/1JZVzF4uF-9Mu2rJCTkMa97KO4myzTnHy/view?usp=sharing)
 
 
