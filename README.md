@@ -347,25 +347,29 @@ for m in ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest']:
 
 -- 預期效果：底端黑色 UI 區塊將即時由 收集單字：我 學校 去 動態切換為 AI 翻譯中...，隨後渲染出精準校正後的繁體中文句子：我往學校去。（或 我往學校。），且影像擷取與骨架渲染始終維持穩定 FPS 不卡頓。
 
-### 3D 動畫重定向與渲染端獨立實驗步驟
-本模組負責將前端 AI 捕捉到的手部特徵點，反正規化並透過物理約束器驅動 3D 虛擬人物。
+### 3D 虛擬人與手語動畫生成管線
+本模組負責建置標準化 3D 虛擬人物、手語動作庫烘焙，以及網頁端（Three.js）動態驅動與表情切換。
 
-#### 1. 環境建置與模型規範
-* **軟體需求**：Blender 3.x 或 4.x 版本。
-* **相依套件**：無須額外安裝 pip 套件，完全使用 Blender 內建之 Python API (`bpy`)。
-* **模型規範**：支援符合 VRM 骨骼拓撲命名標準之 `.vrm` 虛擬人模型。
+#### 1. 環境建置與模型匯出規範
+- **軟體需求**：Blender 3.x / 4.x 版本、Three.js 網頁渲染引擎。
+- **模型規範**：支援符合 VRM / GLTF 標準骨骼與形態鍵（Morph Targets）之 3D 虛擬人模型。
+- **.glb 匯出關鍵設定**：
+  - **啟用** `Shape Keys`（保留臉部表情數據通道）。
+  - **停用** `Use Sparse Accessor`（防止網頁端解析時數據遭壓縮遺失）。
+  - **停用** `Shape Keys Animation`（防止 Blender 內建動畫軌道覆蓋前端表情控制邏輯）。
 
-#### 2. 資料反正規化與空間映射測試
-1. 使用 Blender 開啟 `3D_Animation_module/model_rigging.blend`。
-2. 切換至 Scripting 工作區，開啟 `json_to_blender.py`。
-3. 將腳本底部的 `json_file_path` 替換為已萃取好特徵的 `.json` 檔案路徑。
-4. 點擊執行 (Run Script)。系統將自動判斷 JSON 格式進行座標反正規化，於 3D 空間生成目標追蹤十字線 (Empties)，並於角色上方生成目前的詞彙立體文字。
+#### 2. 關鍵幀動作庫烘焙 (Keyframe Baking)
+1. 使用 Blender 開啟 `3D_Animation_module/model_rigging.blend` 專案檔。
+2. 針對 TSL 台灣手語特徵進行姿勢校正與動作調校，擺脫動態捕捉雜訊，確保手部軌跡與手指姿勢精準穩定。
+3. 執行 **Keyframe Baking** 將手語單字動作導出為標準 NLA (Non-Linear Animation) Clips 或獨立 GLTF 動畫軌道，供前端動態呼叫。
 
-#### 3. 物理約束 (IK) 驅動綁定測試
-1. 確認手腕容器已綁定於模型的腕部骨骼 (`J_Bip_L_Hand` / `J_Bip_R_Hand`)。
-2. 開啟並執行 `apply_damped_track.py`。
-3. 腳本將自動遍歷所有手指關節，附加 `DAMPED_TRACK` 約束並鎖定局部 Y 軸。
-4. 按下空白鍵 (Space) 播放時間軸，即可檢視虛擬人的手語還原動畫。
+#### 3. 網頁端 Three.js 整合與雙通道驅動
+1. **肢體骨架（Body Actions）**：
+   - 使用 `THREE.AnimationMixer` 載入動作檔。
+   - 透過 `executeSingleAction()` 實現單字與句子動畫序列之交叉淡入淡出（Fade In / Out）平滑切換。
+2. **臉部表情（Morph Targets）**：
+   - 使用 VRM 標準命名規範（如 `Fcl_ALL_Neutral`、`Fcl_ALL_Angry`、`Fcl_ALL_Joy` 等）。
+   - 透過 `morphTargetInfluences` 搭配 `setCharacterExpression()` 函式，依據手語語意動態進行表情切換與情緒疊加。
 
 ### 前端 UI (使用者介面端) 獨立實驗步驟
 本模組負責建構使用者介面，並整合前端多媒體設備（相機、麥克風）控制、歷史對話即時模糊檢索、以及分頁狀態連動管理。
